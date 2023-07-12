@@ -36,7 +36,9 @@ for j in range(2):
         
 env.close()
 
-def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995): # lunar lander n_episodes=2000, max_t=1000
+n_episodes=20
+
+def dqn(n_episodes, max_t=10, eps_start=1.0, eps_end=0.01, eps_decay=0.995): # lunar lander n_episodes=2000, max_t=1000
     """Deep Q-Learning.
     
     Params
@@ -48,8 +50,11 @@ def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.99
         eps_decay (float): multiplicative factor (per episode) for decreasing epsilon
     """
     scores = []                        # list containing scores from each episode
+    smooth_scores = []
+    smmoth_scores_window = deque(maxlen=10)
     scores_window = deque(maxlen=100)  # last 100 scores
     eps = eps_start                    # initialize epsilon
+    max_score, min_score = -1000, 1000
     for i_episode in range(1, n_episodes+1):
         state = env.reset()
         score = 0
@@ -62,28 +67,34 @@ def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.99
             if done:
                 break 
         scores_window.append(score)       # save most recent score
+        smmoth_scores_window.append(score)
         scores.append(score)              # save most recent score
+        max_score = max(max_score, score) # save max score
+        min_score = min(min_score, score)
         eps = max(eps_end, eps_decay*eps) # decrease epsilon
         print('\rEpisode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_window)), end="")
+        if i_episode % 10 == 0:
+            smooth_scores.append(np.mean(smmoth_scores_window))
         if i_episode % 100 == 0:
             print('\rEpisode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_window)))
-        # if np.mean(scores_window)>=200.0:
-        #     print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode-100, np.mean(scores_window)))
-        #     torch.save(agent.qnetwork_local.state_dict(), 'checkpoint.pth')
-        #     break
+        if np.mean(scores_window)>=200.0:
+            print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode-100, np.mean(scores_window)))
+            torch.save(agent.qnetwork_local.state_dict(), 'checkpoint.pth')
+            break
         
     print('\nAfter {:d} episodes \tThe Average Score: {:.2f}'.format(i_episode, np.mean(scores_window)))
     torch.save(agent.qnetwork_local.state_dict(), str(env_name) + 'checkpoint.pth')
-    return scores
+    return scores, max_score, min_score, smooth_scores
 
-scores = dqn()
+scores, max_score, min_score, smooth_scores = dqn(n_episodes)
 
 # plot the scores
 fig = plt.figure(figsize=(16, 9))
-# ax = fig.add_subplot(111)
 plt.plot(np.arange(len(scores)), scores)
+plt.plot([i for i in range(0, n_episodes, 10)], smooth_scores, color = 'orange') 
+plt.axhline(y=max_score, color='r', linestyle='--')
+plt.axhline(y=min_score, color='g', linestyle='--')
 plt.ylabel('Score/Return')
 plt.xlabel('Episode #')
 plt.title(f"For environment '{env_name}' ")
-# plt.show()
 plt.savefig("./" + env_name + ".png")
