@@ -175,11 +175,11 @@ class ReplayBuffer:
         states = torch.from_numpy(np.concatenate([e.state for e in experiences if e is not None])).float().to(device)
         
         # Reshape state to add batch dim
-        states = states.reshape(64, 7, 7, 3)
+        states = states.reshape(64, 3, 3, 3)
         
         # Same for next states
         next_states = torch.from_numpy(np.concatenate([e.next_state for e in experiences if e is not None])).float().to(device)  
-        next_states = next_states.reshape(64, 7, 7, 3)
+        next_states = next_states.reshape(64, 3, 3, 3)
         
         actions = torch.from_numpy(np.vstack([e.action for e in experiences if e is not None])).long().to(device)
         rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().to(device)
