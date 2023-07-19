@@ -35,17 +35,43 @@ class QNetwork(nn.Module):
         """
         super(QNetwork, self).__init__()
         self.seed = torch.manual_seed(seed)
-        self.fc1 = nn.Linear(state_size, 128)
-        self.fc2 = nn.Linear(128, 256)
-        self.fc3 = nn.Linear(256, 128)
+        self.fc1 = nn.Linear(state_size, 256)
+        self.fc2 = nn.Linear(256, 256)
+        # self.fc3 = nn.Linear(256, 128)
         # self.fc4 = nn.Linear(fc4_units, fc4_units)
-        self.fc5 = nn.Linear(128, action_size)
+        self.fc5 = nn.Linear(256, action_size)
 
     def forward(self, state):
         """Build a network that maps state -> action values."""
         # state = self.pos_encoder(state)
         x = F.relu(self.fc1(state))
         x = F.relu(self.fc2(x))
-        x = F.relu(self.fc3(x))
+        # x = F.relu(self.fc3(x))
         # x = F.relu(self.fc2(x))
         return self.fc5(x)
+    
+    
+class QNetwork_conv(nn.Module):
+
+    def __init__(self, input_channels = 7, conv_channels = 1, kernel_size = 3, stride = 1, output_dim = 7):
+        super(QNetwork_conv, self).__init__()
+        
+        # Grayscale conversion
+        self.conv1 = nn.Conv2d(input_channels, conv_channels, kernel_size, stride, padding = 1)
+        
+        # Additional convolutional layers 
+        self.conv2 = nn.Conv2d(conv_channels, conv_channels, 2, stride)
+
+        # Fully connected layers
+        self.fc1 = nn.Linear(12, 128)  
+        self.fc2 = nn.Linear(128, output_dim)
+
+    def forward(self, state):
+        """Builds the convolutional network"""
+        if state.shape[1] != 7:
+            print("Error is coming")
+        x = F.relu(self.conv1(state))
+        x = F.relu(self.conv2(x))
+        x = x.view(x.size(0), -1)
+        x = F.relu(self.fc1(x))
+        return self.fc2(x)
