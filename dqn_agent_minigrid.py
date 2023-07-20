@@ -43,7 +43,7 @@ class Agent_minigrid():
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
     
-    def step(self, state, action, reward, next_state, done):
+    def step(self, state, action, reward, next_state, done, time_step):
         # Access image from state dict
         if len(state) == 2:
             state = state[0]['image']
@@ -61,9 +61,9 @@ class Agent_minigrid():
             # If enough samples are available in memory, get random subset and learn
             if len(self.memory) > BATCH_SIZE:
                 experiences = self.memory.sample()
-                self.learn(experiences, GAMMA)
+                self.learn(experiences, GAMMA, time_step)
 
-    def act(self, state, eps=0.):
+    def act(self, time_step, state, eps=0.):
         """Returns actions for given state as per current policy.
         
         Params
@@ -80,7 +80,7 @@ class Agent_minigrid():
         
         self.qnetwork_local.eval()
         with torch.no_grad():
-            action_values = self.qnetwork_local(state)
+            action_values = self.qnetwork_local(time_step, state)
         self.qnetwork_local.train()
 
         # Epsilon-greedy action selection
@@ -91,7 +91,7 @@ class Agent_minigrid():
             return random.choice(np.arange(self.action_size))
             # return torch.from_numpy(self.action_space.sample())
 
-    def learn(self, experiences, gamma):
+    def learn(self, experiences, gamma, time_step):
         """Update value parameters using given batch of experience tuples.
 
         Params
@@ -105,17 +105,18 @@ class Agent_minigrid():
         next_states = next_states.squeeze(0)
 
         # Get max predicted Q values (for next states) from target model
-        Q_targets_next = self.qnetwork_target(next_states).detach().max(1)[0].unsqueeze(1)
+        Q_targets_next = self.qnetwork_target(torch.tensor(time_step), next_states).detach().max(1)[0].unsqueeze(1)
         # Compute Q targets for current states 
         Q_targets = rewards + (gamma * Q_targets_next * (1 - dones))
 
         # Get expected Q values from local model
-        Q_expected = self.qnetwork_local(states).gather(1, actions)
+        Q_expected = self.qnetwork_local(torch.tensor(time_step), states).gather(1, actions)
 
         # Compute loss
         loss = F.mse_loss(Q_expected, Q_targets)
         # Minimize the loss
         self.optimizer.zero_grad()
+        torch.autograd.set_detect_anomaly(True)
         loss.backward()
         self.optimizer.step()
 
