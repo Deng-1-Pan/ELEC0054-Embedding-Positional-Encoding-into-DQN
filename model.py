@@ -33,7 +33,7 @@ class QNetwork(nn.Module):
 
 class QNetwork_conv(nn.Module):
 
-    def __init__(self, input_channels = 3, conv_channels = 1, kernel_size = 3, stride = 1, output_dim = 7):
+    def __init__(self, input_channels = 3, conv_channels = 1, kernel_size = 3, stride = 1, output_dim = 3):
         super(QNetwork_conv, self).__init__()
         
         # Grayscale conversion

@@ -85,6 +85,16 @@ def dqn(n_episodes, max_t=200, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
     
     return scores, max_score, min_score, smooth_scores
 
+# scores_list, smooth_scores_list = [], []
+
+# for _ in range(100):
+#     scores, max_score, min_score, smooth_scores = dqn(n_episodes)
+#     scores_list.append(scores)
+#     smooth_scores_list.append(smooth_scores)
+    
+# scores = np.mean(scores_list, axis=0)
+# smooth_scores = np.mean(smooth_scores_list, axis=0)
+
 scores, max_score, min_score, smooth_scores = dqn(n_episodes)
 
 fig = plt.figure(figsize=(16, 9))
