@@ -8,27 +8,44 @@ import numpy as np
 from collections import deque
 from dqn_agent import Agent
 from dqn_agent_minigrid import Agent_minigrid
+from wrapper.Wrapper import MyViewSizeWrapper
 import matplotlib.pyplot as plt
 from minigrid.wrappers import ViewSizeWrapper
 
+plt.ion()  # enable interactive mode
+
 env_name = 'MiniGrid-Empty-8x8-v0'
+
+render, PE_switch = False, False
 
 if os.path.exists(str(env_name) + "checkpoint.pth"):
   os.remove(str(env_name) + "checkpoint.pth")
   print("The file is deleted")
 else:
   print("The file does not exist")
-
-env = gym.make(env_name)
-# env = gym.make(env_name)
-env = ViewSizeWrapper(env, agent_view_size=3)
-env.reset()
   
-agent = Agent_minigrid(state_size=list(np.shape(env.observation_space.sample()['image'])), action_size=env.action_space.n, seed=0)
+
+# Whether to view the env or not  
+if render:
+    env = gym.make(env_name, render_mode='rgb_array')
+    env = MyViewSizeWrapper(env, agent_view_size=3)
+else:
+    env = gym.make(env_name)
+    env = ViewSizeWrapper(env, agent_view_size=3)
+    
+
+
+env.reset()
+
+state_size = list(np.shape(env.observation_space.sample()['image']))
+action_size = env.action_space.n
+  
+agent = Agent_minigrid(state_size=state_size, action_size=action_size, seed=0, PE_switch = PE_switch)
 
 n_episodes=1000
 
-def dqn(n_episodes, max_t=200, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
+
+def dqn(n_episodes, render, PE_switch, max_t=200, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
     """Deep Q-Learning.
     
     Params
@@ -46,29 +63,48 @@ def dqn(n_episodes, max_t=200, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
     eps = eps_start                    # initialize epsilon
     max_score, min_score = -1000, 1000
 
-    
     for i_episode in range(1, n_episodes+1):
         state = env.reset()
+        position_info = np.array(env.agent_pos)
         score = 0
-        for t in range(max_t):
-            print(f"\rNow is step {t}", end="")
-            action = agent.act(t, state, eps)
-            next_state, reward, done, info, Dict = env.step(action)
-            agent.step(state, action, reward, next_state, done, t)
-            state = next_state
-            score += reward
-            
-            if done:
-                break 
-            
-            
+        
+        try:
+            for t in range(max_t):
+                print(f"\rNow is step {t}", end="")
+                action = agent.act(t, position_info, state, PE_switch, eps)
+                position_info = np.array(env.agent_pos)
+                next_state, reward, done, info, Dict = env.step(action)
+
+                if render:
+                    if len(state) == 2:
+                        plt.imshow(state[0]['env_image'])
+                    else:
+                        plt.imshow(state['env_image'])
+
+                    
+                    plt.title(f"Episode {i_episode}, Step {t}, action {action}, coor {position_info}")
+                    plt.pause(0.001) # pause briefly to redraw
+
+                agent.step(state, action, reward, next_state, done, t, position_info, PE_switch)
+                state = next_state
+                score += reward
+                
+                if done:
+                    break 
+                          
+        except KeyboardInterrupt:
+            plt.ioff()
+            plt.show()       
+        
         print(f'\nThe reward for episode {i_episode} is {score}')
+        
         scores_window.append(score)       # save most recent score
         smmoth_scores_window.append(score)
         scores.append(score)              # save most recent score
         max_score = max(max_score, score) # save max score
         min_score = min(min_score, score)
         eps = max(eps_end, eps_decay*eps) # decrease epsilon
+        
         print('\rEpisode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_window)), end="")
         
         if i_episode % 10 == 0:
@@ -85,17 +121,7 @@ def dqn(n_episodes, max_t=200, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
     
     return scores, max_score, min_score, smooth_scores
 
-# scores_list, smooth_scores_list = [], []
-
-# for _ in range(100):
-#     scores, max_score, min_score, smooth_scores = dqn(n_episodes)
-#     scores_list.append(scores)
-#     smooth_scores_list.append(smooth_scores)
-    
-# scores = np.mean(scores_list, axis=0)
-# smooth_scores = np.mean(smooth_scores_list, axis=0)
-
-scores, max_score, min_score, smooth_scores = dqn(n_episodes)
+scores, max_score, min_score, smooth_scores = dqn(n_episodes, render, PE_switch)
 
 fig = plt.figure(figsize=(16, 9))
 plt.plot(np.arange(len(scores)), scores)
