@@ -1,3 +1,5 @@
+import os
+import csv
 import numpy as np
 import random
 from collections import namedtuple, deque
@@ -42,26 +44,8 @@ class Agent_minigrid():
         self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed)
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
-        
-    def encode_state(self, timestep):
-        """Create a unique timestep encoding format
-        
-        Params
-        ======
-            timestep (int): the current timestep
-        """
-        
-        state_encoding = []
-        
-        for i in range(2):
-            if i % 2 == 0:
-                state_encoding.append(np.sin(timestep / np.power(10000, 2 * (i // 2) / 2)))
-            elif i % 2 != 0:
-                state_encoding.append(np.cos(timestep / np.power(10000, 2 * (i // 2) / 2)))
-
-        return np.array(state_encoding)
     
-    def step(self, state, action, reward, next_state, done, time_step, position_info, PE_switch):
+    def step(self, state, action, reward, next_state, done, time_step, PE_switch):
         # Access image from state dict
         if len(state) == 2:
             state = state[0]['image']
@@ -69,11 +53,9 @@ class Agent_minigrid():
         else:
             state = state['image']
             next_state = next_state['image']
-            
-        time_step = self.encode_state(time_step)
         
         # Save experience in replay memory
-        self.memory.add(state, action, reward, next_state, done, time_step, position_info)
+        self.memory.add(state, action, reward, next_state, done, time_step)
         
         # Learn every UPDATE_EVERY time steps.
         self.t_step = (self.t_step + 1) % UPDATE_EVERY
@@ -83,7 +65,7 @@ class Agent_minigrid():
                 experiences = self.memory.sample()
                 self.learn(experiences, GAMMA, PE_switch)
 
-    def act(self, time_step, position_info, state, PE_switch, eps=0.):
+    def act(self, time_step, state, PE_switch, eps=0.):
         """Returns actions for given state as per current policy.
         
         Params
@@ -99,12 +81,11 @@ class Agent_minigrid():
         state = torch.from_numpy(state).float().unsqueeze(0).to(device)
         
         if PE_switch:
-            time_step = torch.tensor(self.encode_state(time_step)).to(device)
-            position_info = torch.tensor(position_info).to(device)
+            time_step = torch.tensor(time_step).to(device)
         
         self.qnetwork_local.eval()
         with torch.no_grad():
-            action_values = self.qnetwork_local(time_step, position_info, state, PE_switch)
+            action_values = self.qnetwork_local(time_step, state, PE_switch)
         self.qnetwork_local.train()
 
         # Epsilon-greedy action selection
@@ -114,6 +95,22 @@ class Agent_minigrid():
         else:
             return random.choice(np.arange(self.action_size))
             # return torch.from_numpy(self.action_space.sample())
+            
+    def write_loss_to_csv(self, loss, filename='loss.csv'):
+        # Check if file exists
+        file_exists = os.path.isfile(filename)
+
+        with open(filename, 'a') as csvfile:  # 'a' mode appends to the existing file
+            headers = ['loss']
+            writer = csv.DictWriter(csvfile, delimiter=',', lineterminator='\n', fieldnames=headers)
+
+            # Only write headers once
+            if not file_exists:
+                writer.writeheader()  # file doesn't exist yet, write a header
+
+            writer.writerow({'loss': loss})
+
+        
 
     def learn(self, experiences, gamma, PE_switch):
         """Update value parameters using given batch of experience tuples.
@@ -123,21 +120,22 @@ class Agent_minigrid():
             experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s', done) tuples 
             gamma (float): discount factor
         """
-        states, actions, rewards, next_states, dones, time_step, position_info = experiences
+        states, actions, rewards, next_states, dones, time_step = experiences
         
         states = states.squeeze(0)
         next_states = next_states.squeeze(0)
 
         # Get max predicted Q values (for next states) from target model
-        Q_targets_next = self.qnetwork_target(time_step, position_info, next_states, PE_switch).detach().max(1)[0].unsqueeze(1)
+        Q_targets_next = self.qnetwork_target(time_step, next_states, PE_switch).detach().max(1)[0].unsqueeze(1)
         # Compute Q targets for current states 
         Q_targets = rewards + (gamma * Q_targets_next * (1 - dones))
 
         # Get expected Q values from local model
-        Q_expected = self.qnetwork_local(time_step, position_info, states, PE_switch).gather(1, actions)
+        Q_expected = self.qnetwork_local(time_step, states, PE_switch).gather(1, actions)
 
         # Compute loss
         loss = F.mse_loss(Q_expected, Q_targets)
+        self.write_loss_to_csv(loss = loss.item())  # write loss to CSV
         # Minimize the loss
         self.optimizer.zero_grad()
         torch.autograd.set_detect_anomaly(True)
@@ -177,13 +175,12 @@ class ReplayBuffer:
         self.action_size = action_size
         self.memory = deque(maxlen=buffer_size)  
         self.batch_size = batch_size
-        self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done", "time_step", "position_info"])
+        self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done", "time_step"])
         self.seed = random.seed(seed)
     
-    def add(self, state, action, reward, next_state, done, time_step, position_info):
+    def add(self, state, action, reward, next_state, done, time_step):
         """Add a new experience to memory."""
-        position_info = position_info.copy()
-        time_step = time_step.copy()
+        # time_step = time_step.copy()
         
         if len(state) == 2:
             state = state[0]['image']
@@ -193,7 +190,7 @@ class ReplayBuffer:
             next_state = next_state
             
         # Create a new namedtuple instance for this experience
-        e = self.experience(state, action, reward, next_state, done, time_step, position_info)
+        e = self.experience(state, action, reward, next_state, done, time_step)
 
         # Append the new experience namedtuple
         self.memory.append(e)
@@ -216,9 +213,8 @@ class ReplayBuffer:
         rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().to(device)
         dones = torch.from_numpy(np.vstack([e.done for e in experiences if e is not None]).astype(np.uint8)).float().to(device)
         time_step = torch.from_numpy(np.vstack([e.time_step for e in experiences if e is not None])).float().to(device)
-        position_info = torch.from_numpy(np.vstack([e.position_info for e in experiences if e is not None])).float().to(device)
   
-        return (states, actions, rewards, next_states, dones, time_step, position_info)
+        return (states, actions, rewards, next_states, dones, time_step)
 
     def __len__(self):
         """Return the current size of internal memory."""
