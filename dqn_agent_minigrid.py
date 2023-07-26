@@ -34,6 +34,7 @@ class Agent_minigrid():
         self.state_size = state_size
         self.action_size = action_size
         self.seed = random.seed(seed)
+        self.seed_record = seed
 
         # Q-Network
         self.qnetwork_local = QNetwork_conv(PE_switch).to(device)
@@ -96,7 +97,7 @@ class Agent_minigrid():
             return random.choice(np.arange(self.action_size))
             # return torch.from_numpy(self.action_space.sample())
             
-    def write_loss_to_csv(self, loss, filename='loss.csv'):
+    def write_loss_to_csv(self, loss, filename):
         # Check if file exists
         file_exists = os.path.isfile(filename)
 
@@ -135,7 +136,10 @@ class Agent_minigrid():
 
         # Compute loss
         loss = F.mse_loss(Q_expected, Q_targets)
-        self.write_loss_to_csv(loss = loss.item())  # write loss to CSV
+        if PE_switch:
+            self.write_loss_to_csv(loss = loss.item(), filename='loss_seed_' + str(self.seed_record ) + '_with_PE.csv')  # write loss to CSV
+        else:
+            self.write_loss_to_csv(loss = loss.item(), filename='loss_seed_' + str(self.seed_record ) + '_without_PE.csv')
         # Minimize the loss
         self.optimizer.zero_grad()
         torch.autograd.set_detect_anomaly(True)
