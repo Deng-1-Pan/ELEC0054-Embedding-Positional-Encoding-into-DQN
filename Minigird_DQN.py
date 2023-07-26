@@ -1,9 +1,8 @@
 import os
 import csv
+import glob
 import gymnasium as gym
-import minigrid
 import pandas as pd
-# import gym_minigrid
 import random
 import torch
 import numpy as np
@@ -15,9 +14,21 @@ from minigrid.wrappers import ViewSizeWrapper
 
 plt.ion()  # enable interactive mode
 
+
+# Get a list of all CSV files that contain 'seed' in their name
+files = glob.glob('*seed*.csv')
+
+# Loop over the list of files and remove each one
+for file in files:
+    try:
+        os.remove(file)
+        print(f"File {file} has been removed successfully")
+    except:
+        print(f"Error while deleting file : {file}")
+
 env_name = 'MiniGrid-Empty-8x8-v0'
 
-render, PE_switch = False, True
+render = False
 
 if os.path.exists(str(env_name) + "checkpoint.pth"):
     os.remove(str(env_name) + "checkpoint.pth")
@@ -48,10 +59,24 @@ env.reset()
 
 state_size = list(np.shape(env.observation_space.sample()['image']))
 action_size = env.action_space.n
-  
-agent = Agent_minigrid(state_size=state_size, action_size=action_size, seed=0, PE_switch = PE_switch)
 
 n_episodes = 0
+
+def compute_custom_means(lst):
+    # Get the maximum length of the sublists
+    max_len = max(len(sublist) for sublist in lst)
+
+    # Initialize a list to store the means
+    means = []
+
+    # For each position up to max_len
+    for i in range(max_len):
+        # Get the values at this position in each sublist (if it exists)
+        values = [sublist[i] for sublist in lst if i < len(sublist)]
+        # Compute the mean of the values and append it to the list of means
+        means.append(np.mean(values))
+
+    return means
 
 def dqn(n_episodes, render, PE_switch, max_t=200, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
     """Deep Q-Learning.
@@ -69,7 +94,7 @@ def dqn(n_episodes, render, PE_switch, max_t=200, eps_start=1.0, eps_end=0.01, e
     eps = eps_start                    # initialize epsilon
     max_score, min_score = -1000, 1000
 
-    budget = 2_000_000
+    budget = 2_000
     t_global = 0
     
     while t_global < budget:
@@ -122,87 +147,66 @@ def dqn(n_episodes, render, PE_switch, max_t=200, eps_start=1.0, eps_end=0.01, e
     
     return scores, max_score, min_score, smooth_scores
 
-scores, max_score, min_score, smooth_scores = dqn(n_episodes, render, PE_switch)
+return_without_PE, return_with_PE = [], []
 
-with open('rewards.csv', 'w') as f:
-    writer = csv.writer(f)
-    writer.writerow(['Episode', 'Reward'])
-    
-    for i, reward in enumerate(scores):
-        writer.writerow([i+1, reward])
+for PE_switch in [False, True]:
+    for seed in np.random.randint(9999, size=3):
 
-fig = plt.figure(figsize=(16, 9))
-plt.plot(np.arange(len(scores)), scores)
-# plt.plot([i for i in range(0, n_episodes, 10)], smooth_scores, color = 'orange') 
-plt.axhline(y=max_score, color='r', linestyle='--')
-plt.axhline(y=min_score, color='g', linestyle='--')
-plt.ylabel('Score/Return')
-plt.xlabel('Episode #')
-plt.title(f"For environment '{env_name}' ")
+        agent = Agent_minigrid(state_size=state_size, action_size=action_size, seed=seed, PE_switch = PE_switch)
+        scores, max_score, min_score, smooth_scores = dqn(n_episodes, render, PE_switch)
+        
+        if PE_switch:
+            return_with_PE.append(scores)
+            
+            with open('rewards_seed_'+ str(seed) + '_with_PE.csv', 'w') as f:
+                writer = csv.writer(f)
+                writer.writerow(['Episode', 'Reward'])
+                
+                for i, reward in enumerate(scores):
+                    writer.writerow([i+1, reward])            
+            
+        else:
+            return_without_PE.append(scores)
+
+            with open('rewards_seed_'+ str(seed) + '_without_PE.csv', 'w') as f:
+                writer = csv.writer(f)
+                writer.writerow(['Episode', 'Reward'])
+                
+                for i, reward in enumerate(scores):
+                    writer.writerow([i+1, reward])
+                    
+mean_return_without_PE = np.array(compute_custom_means(return_without_PE))
+mean_return_with_PE = np.array(compute_custom_means(return_with_PE))
+
+return_without_PE_flat = [item for sublist in return_without_PE for item in sublist]
+return_with_PE_flat = [item for sublist in return_with_PE for item in sublist]
+
+std_dev_without_PE = np.std(np.array(return_without_PE_flat))
+std_dev_with_PE = np.std(np.array(return_with_PE_flat))
+
+lower_without_PE = (mean_return_without_PE - std_dev_without_PE).astype(np.float64)
+upper_without_PE = (mean_return_without_PE + std_dev_without_PE).astype(np.float64)
+lower_with_PE = (mean_return_with_PE - std_dev_with_PE).astype(np.float64)
+upper_with_PE = (mean_return_with_PE + std_dev_with_PE).astype(np.float64)
+                    
+fig, ax = plt.subplots(figsize=(16, 9))
+
+
+ax.plot(np.arange(len(mean_return_without_PE)), mean_return_without_PE, label = 'without_PE')
+ax.plot(np.arange(len(mean_return_with_PE)), mean_return_with_PE, label = 'with_PE')
+
+ax.fill_between(np.arange(len(mean_return_without_PE)), lower_without_PE, upper_without_PE, color='blue', alpha=0.2)
+ax.fill_between(np.arange(len(mean_return_with_PE)), lower_with_PE, upper_with_PE, color='red', alpha=0.2)
+
+
+ax.axhline(y=max_score, color='r', linestyle='--')
+ax.axhline(y=min_score, color='g', linestyle='--')
+
+ax.set_ylabel('Score/Return')
+ax.set_xlabel('Episode #')
+ax.set_title(f"For environment '{env_name}' (3 round seed test)")
+
+ax.legend()
+
 plt.savefig("./" + env_name + ".png")
 plt.close()
-
-data = pd.read_csv('loss.csv')
-data.plot(kind='line', figsize=(16, 9))
-
-plt.xlabel('Episode')
-plt.ylabel('Loss')
-plt.savefig("./" + "loss" + ".png")
-plt.close()
-# agent.qnetwork_local.load_state_dict(torch.load('./model/MiniGrid-Empty-8x8-v0checkpoint-4-32-32.pth'))
-
-# view_fig, view_ax = plt.subplots()
-# view_fig.show()
-
-# for i in range(40):
-#     state = env.reset()
-#     for j in range(200):
-#         action = agent.act(state)
-#         env.render()
-#         state, reward, done, _, _ = env.step(action)
-    
-#         img = state['image']
-        
-#         view_ax.clear()
-#         view_ax.set_title("Agent View - Step {}".format(j))
-#         view_ax.set_title("Agent View - Step {} - Reward: {:.2f}".format(j, reward))
-#         view_ax.imshow(img)
-
-#         view_fig.canvas.draw()
-#         view_fig.canvas.flush_events()
-#         plt.pause(0.01)
-        
-#         if done:
-#             break 
-
-# plt.close(view_fig)            
-# env.close()
-
-
-
-# watch an untrained agent
-# state = env.reset()
-# done = False
-# for j in range(5000):
-# # while done:
-#     action = agent.act(state)
-#     print(action)
-#     env.render()
-#     state, reward, done, info, Dict = env.step(action)
-#     if done:
-#         break 
-        
-# env.close()
-
-# done = False
-# times = 0
-# while not done:
-#     print(f"Round {times}")
-#     action = env.action_space.sample()
-#     state, reward, done, _, _ = env.step(action)
-#     print(state['mission']) # mission is useless
-#     env.render()
-#     times += 1
-    
-# env.close()
-# print(reward)
