@@ -7,7 +7,7 @@ import random
 import torch
 import numpy as np
 from collections import deque
-from dqn_agent_MultiEnv import Agent_minigrid
+from dqn_agent_minigrid import Agent_minigrid
 from wrapper.Wrapper import MyViewSizeWrapper
 import matplotlib.pyplot as plt
 from minigrid.wrappers import ViewSizeWrapper
@@ -164,6 +164,9 @@ for PE_switch in [False, True]:
         if PE_switch:
             return_with_PE.append(scores)
             
+            max_score_with_PE = max_score
+            min_score_with_PE = min_score
+            
             with open('rewards_seed_'+ str(seed) + '_with_PE.csv', 'w') as f:
                 writer = csv.writer(f)
                 writer.writerow(['Episode', 'Reward'])
@@ -173,6 +176,9 @@ for PE_switch in [False, True]:
             
         else:
             return_without_PE.append(scores)
+            
+            max_score_without_PE = max_score
+            min_score_without_PE = min_score
 
             with open('rewards_seed_'+ str(seed) + '_without_PE.csv', 'w') as f:
                 writer = csv.writer(f)
@@ -205,8 +211,11 @@ ax.fill_between(np.arange(len(mean_return_without_PE)), lower_without_PE, upper_
 ax.fill_between(np.arange(len(mean_return_with_PE)), lower_with_PE, upper_with_PE, color='red', alpha=0.2)
 
 
-ax.axhline(y=max_score, color='r', linestyle='--')
-ax.axhline(y=min_score, color='g', linestyle='--')
+ax.axhline(y=max_score_with_PE, color='r', linestyle='--', label='Max score with PE')
+ax.axhline(y=min_score_with_PE, color='g', linestyle='--', label='Min score with PE')
+ax.axhline(y=max_score_without_PE, color='b', linestyle='--', label='Max score without PE')
+ax.axhline(y=min_score_without_PE, color='y', linestyle='--', label='Min score without PE')
+
 
 ax.set_ylabel('Score/Return')
 ax.set_xlabel('Episode #')
