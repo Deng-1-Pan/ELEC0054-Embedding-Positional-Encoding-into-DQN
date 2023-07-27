@@ -3,22 +3,28 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 
+KEY_WORD = 'MiniGrid'   # check if the env is Minigrid
+OUTPUT_DIM = 4 # 3 - MiniGrid-Empty
+INPUT_LAYER = 8 # 64 - MiniGRid-Empty
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-class QNetwork_conv(nn.Module):
+class QNetwork(nn.Module):
 
-    def __init__(self, PE_switch, input_channels = 3, conv_channels = 16, kernel_size = 3, stride = 1, output_dim = 7):
-        super(QNetwork_conv, self).__init__()
+    def __init__(self, env_name, input_channels = 3, conv_channels = 16, kernel_size = 3, stride = 1, output_dim = OUTPUT_DIM):
+        super(QNetwork, self).__init__()
         
-        # Grayscale conversion
-        self.conv1 = nn.Conv2d(input_channels, conv_channels, kernel_size, stride, padding = 1)
+        self.env_name = env_name
         
-        # Additional convolutional layers 
-        self.conv2 = nn.Conv2d(conv_channels, conv_channels, 2, stride)
+        if KEY_WORD in env_name:
+            # Grayscale conversion
+            self.conv1 = nn.Conv2d(input_channels, conv_channels, kernel_size, stride, padding = 1)
+            
+            # Additional convolutional layers 
+            self.conv2 = nn.Conv2d(conv_channels, conv_channels, 2, stride)
 
         # Fully connected layers
-        self.fc1 = nn.Linear(64, 32)
+        self.fc1 = nn.Linear(INPUT_LAYER, 32)
         self.fc2 = nn.Linear(32, 32) 
         self.fc3 = nn.Linear(32, output_dim)
     
@@ -51,10 +57,12 @@ class QNetwork_conv(nn.Module):
     def forward(self, timestep, state, PE_switch):
         """Builds the convolutional network"""
         
-        x = F.relu(self.conv1(state))
-        x = F.relu(self.conv2(x))
-        x = x.view(x.size(0), -1)
-        # x = x.flatten()
+        if KEY_WORD in self.env_name:
+            x = F.relu(self.conv1(state))
+            x = F.relu(self.conv2(x))
+            x = x.view(x.size(0), -1)
+        else:
+            x = state
         
         if PE_switch:
             x = self.positional_encoding(x, timestep)

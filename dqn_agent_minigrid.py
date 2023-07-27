@@ -4,25 +4,26 @@ import numpy as np
 import random
 from collections import namedtuple, deque
 
-from model import QNetwork_conv
+from model import QNetwork
 
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
 BUFFER_SIZE = int(1e5)  # replay buffer size
-BATCH_SIZE = 64         # minibatch size
+BATCH_SIZE = 64 # 64        # minibatch size
 GAMMA = 0.99            # discount factor
 TAU = 1e-3              # for soft update of target parameters
 LR = 5e-4               # learning rate 
 UPDATE_EVERY = 4        # how often to update the network
+KEY_WORD = 'MiniGrid'   # check if the env is Minigrid
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class Agent_minigrid():
     """Interacts with and learns from the environment."""
 
-    def __init__(self, state_size, action_size, seed, PE_switch):
+    def __init__(self, state_size, action_size, seed, PE_switch, env_name):
         """Initialize an Agent object.
         
         Params
@@ -30,30 +31,34 @@ class Agent_minigrid():
             state_size (int): dimension of each state
             action_size (int): dimension of each action
             seed (int): random seed
+            PE_switch (bool) : switch for Positional Encoding
+            env_name (str) : the name of the environmnet
         """
         self.state_size = state_size
         self.action_size = action_size
         self.seed = random.seed(seed)
         self.seed_record = seed
+        self.env_name = env_name
 
         # Q-Network
-        self.qnetwork_local = QNetwork_conv(PE_switch).to(device)
-        self.qnetwork_target = QNetwork_conv(PE_switch).to(device)
+        self.qnetwork_local = QNetwork(env_name).to(device)
+        self.qnetwork_target = QNetwork(env_name).to(device)
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
 
         # Replay memory
-        self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed)
+        self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed, env_name)
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
     
     def step(self, state, action, reward, next_state, done, time_step, PE_switch):
-        # Access image from state dict
-        if len(state) == 2:
-            state = state[0]['image']
-            next_state = next_state['image']
-        else:
-            state = state['image']
-            next_state = next_state['image']
+        if KEY_WORD in self.env_name:
+            # Access image from state dict
+            if len(state) == 2:
+                state = state[0]['image']
+                next_state = next_state['image']
+            else:
+                state = state['image']
+                next_state = next_state['image']
         
         # Save experience in replay memory
         self.memory.add(state, action, reward, next_state, done, time_step)
@@ -74,10 +79,17 @@ class Agent_minigrid():
             state (array_like): current state
             eps (float): epsilon, for epsilon-greedy action selection
         """
+        
         if len(state) == 2:
-            state = state[0]['image'] 
+            if KEY_WORD in self.env_name:
+                state = state[0]['image']
+            else:
+                state = state[0]
         else:
-            state = state['image'] 
+            if KEY_WORD in self.env_name:
+                state = state['image'] 
+            else:
+                state = state
             
         state = torch.from_numpy(state).float().unsqueeze(0).to(device)
         
@@ -91,11 +103,12 @@ class Agent_minigrid():
 
         # Epsilon-greedy action selection
         if random.random() > eps:
-            # return np.argmax(action_values.cpu().data.numpy())
             return np.argmax(action_values.cpu().data.numpy())
         else:
-            return random.choice(np.arange(self.action_size))
-            # return torch.from_numpy(self.action_space.sample())
+            if KEY_WORD in self.env_name:
+                return random.choice(np.arange(3))
+            else:
+                return random.choice(np.arange(self.action_size))
             
     def write_loss_to_csv(self, loss, filename):
         # Check if file exists
@@ -110,8 +123,6 @@ class Agent_minigrid():
                 writer.writeheader()  # file doesn't exist yet, write a header
 
             writer.writerow({'loss': loss})
-
-        
 
     def learn(self, experiences, gamma, PE_switch):
         """Update value parameters using given batch of experience tuples.
@@ -166,7 +177,7 @@ class Agent_minigrid():
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
 
-    def __init__(self, action_size, buffer_size, batch_size, seed):
+    def __init__(self, action_size, buffer_size, batch_size, seed, env_name):
         """Initialize a ReplayBuffer object.
 
         Params
@@ -181,14 +192,18 @@ class ReplayBuffer:
         self.batch_size = batch_size
         self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done", "time_step"])
         self.seed = random.seed(seed)
+        self.env_name = env_name
     
     def add(self, state, action, reward, next_state, done, time_step):
         """Add a new experience to memory."""
         # time_step = time_step.copy()
         
         if len(state) == 2:
-            state = state[0]['image']
-            next_state = next_state['image']
+            if KEY_WORD in self.env_name:
+                state = state[0]['image']
+                next_state = next_state['image']
+            else:
+                state = state[0]
         else:
             state = state
             next_state = next_state
@@ -202,16 +217,20 @@ class ReplayBuffer:
     def sample(self):
         """Randomly sample a batch of experiences from memory."""
         experiences = random.sample(self.memory, k=self.batch_size)
-
-        # Concatenate states instead of stacking
-        states = torch.from_numpy(np.concatenate([e.state for e in experiences if e is not None])).float().to(device)
         
-        # Reshape state to add batch dim
-        states = states.reshape(BATCH_SIZE, 3, 3, 3)
-        
-        # Same for next states
-        next_states = torch.from_numpy(np.concatenate([e.next_state for e in experiences if e is not None])).float().to(device)  
-        next_states = next_states.reshape(BATCH_SIZE, 3, 3, 3)
+        if KEY_WORD in self.env_name:
+            # Concatenate states instead of stacking
+            states = torch.from_numpy(np.concatenate([e.state for e in experiences if e is not None])).float().to(device)
+            
+            # Reshape state to add batch dim
+            states = states.reshape(BATCH_SIZE, 3, 3, 3)
+            
+            # Same for next states
+            next_states = torch.from_numpy(np.concatenate([e.next_state for e in experiences if e is not None])).float().to(device)  
+            next_states = next_states.reshape(BATCH_SIZE, 3, 3, 3)
+        else:
+            states = torch.from_numpy(np.vstack([e.state for e in experiences if e is not None])).float().to(device)
+            next_states = torch.from_numpy(np.vstack([e.next_state for e in experiences if e is not None])).float().to(device)
         
         actions = torch.from_numpy(np.vstack([e.action for e in experiences if e is not None])).long().to(device)
         rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().to(device)

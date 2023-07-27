@@ -12,8 +12,10 @@ from wrapper.Wrapper import MyViewSizeWrapper
 import matplotlib.pyplot as plt
 from minigrid.wrappers import ViewSizeWrapper
 
-plt.ion()  # enable interactive mode
+KEY_WORD = 'MiniGrid'   # check if the env is Minigrid
+RENDER = False # For minigrid only
 
+plt.ion()  # enable interactive mode
 
 # Get a list of all CSV files that contain 'seed' in their name
 files = glob.glob('*seed*.csv')
@@ -26,10 +28,9 @@ for file in files:
     except:
         print(f"Error while deleting file : {file}")
 
-env_name = 'MiniGrid-Empty-8x8-v0'
+env_name = "LunarLander-v2" # 'MiniGrid-Empty-8x8-v0'
 
-render = False
-
+# Remove the files that are trained last round
 if os.path.exists(str(env_name) + "checkpoint.pth"):
     os.remove(str(env_name) + "checkpoint.pth")
   
@@ -44,21 +45,25 @@ if os.path.exists('rewards.csv'):
     print("The file is deleted")
 
   
-
-# Whether to view the env or not  
-if render:
-    env = gym.make(env_name, render_mode='rgb_array')
-    env = MyViewSizeWrapper(env, agent_view_size=3)
+if KEY_WORD in env_name:
+    # Whether to view the env or not  
+    if RENDER:
+        env = gym.make(env_name, render_mode='rgb_array')
+        env = MyViewSizeWrapper(env, agent_view_size=3)
+    else:
+        env = gym.make(env_name)
+        env = ViewSizeWrapper(env, agent_view_size=3)
+        
+    state_size = list(np.shape(env.observation_space.sample()['image']))
+    action_size = env.action_space.n
 else:
     env = gym.make(env_name)
-    env = ViewSizeWrapper(env, agent_view_size=3)
+    
+    state_size = np.shape(env.observation_space.sample())
+    action_size = env.action_space.n
     
 
-
 env.reset()
-
-state_size = list(np.shape(env.observation_space.sample()['image']))
-action_size = env.action_space.n
 
 n_episodes = 0
 
@@ -94,7 +99,7 @@ def dqn(n_episodes, render, PE_switch, max_t=200, eps_start=1.0, eps_end=0.01, e
     eps = eps_start                    # initialize epsilon
     max_score, min_score = -1000, 1000
 
-    budget = 2_000
+    budget = 20_000
     t_global = 0
     
     while t_global < budget:
@@ -108,10 +113,11 @@ def dqn(n_episodes, render, PE_switch, max_t=200, eps_start=1.0, eps_end=0.01, e
                 t_global += 1
                 print(f"\rNow is step {t}", end="")
                 action = agent.act(t, state, PE_switch, eps)
-                position_info = np.array(env.agent_pos)
                 next_state, reward, done, info, Dict = env.step(action)
 
-                if render:
+                if render and env_name == 'MiniGrid-Empty-8x8-v0':
+                    position_info = np.array(env.agent_pos)
+                    
                     if len(state) == 2:
                         plt.imshow(state[0]['env_image'])
                     else:
@@ -152,8 +158,8 @@ return_without_PE, return_with_PE = [], []
 for PE_switch in [False, True]:
     for seed in np.random.randint(9999, size=3):
 
-        agent = Agent_minigrid(state_size=state_size, action_size=action_size, seed=seed, PE_switch = PE_switch)
-        scores, max_score, min_score, smooth_scores = dqn(n_episodes, render, PE_switch)
+        agent = Agent_minigrid(state_size=state_size, action_size=action_size, seed=seed, PE_switch = PE_switch, env_name = env_name)
+        scores, max_score, min_score, smooth_scores = dqn(n_episodes, RENDER, PE_switch)
         
         if PE_switch:
             return_with_PE.append(scores)
