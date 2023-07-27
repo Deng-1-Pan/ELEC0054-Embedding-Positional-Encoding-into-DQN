@@ -7,7 +7,7 @@ import random
 import torch
 import numpy as np
 from collections import deque
-from dqn_agent_minigrid import Agent_minigrid
+from dqn_agent_MultiEnv import Agent_minigrid
 from wrapper.Wrapper import MyViewSizeWrapper
 import matplotlib.pyplot as plt
 from minigrid.wrappers import ViewSizeWrapper
