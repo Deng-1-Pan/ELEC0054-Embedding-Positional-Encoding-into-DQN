@@ -7,7 +7,7 @@ import random
 import torch
 import numpy as np
 from collections import deque
-from dqn_agent_MultiEnv import Agent_minigrid
+from dqn_agent_minigrid import Agent_minigrid
 from wrapper.Wrapper import MyViewSizeWrapper
 import matplotlib.pyplot as plt
 from minigrid.wrappers import ViewSizeWrapper
@@ -187,6 +187,7 @@ for PE_switch in [False, True]:
                 for i, reward in enumerate(scores):
                     writer.writerow([i+1, reward])
                     
+
 mean_return_without_PE = np.array(compute_custom_means(return_without_PE))
 mean_return_with_PE = np.array(compute_custom_means(return_with_PE))
 
@@ -210,12 +211,10 @@ ax.plot(np.arange(len(mean_return_with_PE)), mean_return_with_PE, label = 'with_
 ax.fill_between(np.arange(len(mean_return_without_PE)), lower_without_PE, upper_without_PE, color='blue', alpha=0.2)
 ax.fill_between(np.arange(len(mean_return_with_PE)), lower_with_PE, upper_with_PE, color='red', alpha=0.2)
 
-
 ax.axhline(y=max_score_with_PE, color='r', linestyle='--', label='Max score with PE')
 ax.axhline(y=min_score_with_PE, color='g', linestyle='--', label='Min score with PE')
 ax.axhline(y=max_score_without_PE, color='b', linestyle='--', label='Max score without PE')
 ax.axhline(y=min_score_without_PE, color='y', linestyle='--', label='Min score without PE')
-
 
 ax.set_ylabel('Score/Return')
 ax.set_xlabel('Episode #')
@@ -223,5 +222,70 @@ ax.set_title(f"For environment '{env_name}' (3 round seed test)")
 
 ax.legend()
 
-plt.savefig("./" + env_name + ".png")
+plt.savefig("./" + env_name + "_reward.png")
+plt.close()
+
+
+# Find all CSV files that contain 'loss_seed' in their names
+files_with_PE = glob.glob('*loss_seed*with_PE*.csv')
+files_without_PE = glob.glob('*loss_seed*without_PE*.csv')
+
+# Create an empty list to store the numpy arrays
+loss_arrays_with_PE, loss_arrays_without_PE = [], []
+
+# Loop through the files
+for file in files_with_PE:
+    # Read the CSV file
+    df = pd.read_csv(file)
+    
+    # Extract the 'loss' column and convert it to a numpy array
+    loss = df['loss'].to_numpy()
+    
+    # Append the numpy array to the list
+    loss_arrays_with_PE.append(loss)
+    
+for file in files_without_PE:
+    # Read the CSV file
+    df = pd.read_csv(file)
+    
+    # Extract the 'loss' column and convert it to a numpy array
+    loss = df['loss'].to_numpy()
+    
+    # Append the numpy array to the list
+    loss_arrays_without_PE.append(loss)
+    
+mean_loss_without_PE = np.array(compute_custom_means(loss_arrays_without_PE))
+mean_loss_with_PE = np.array(compute_custom_means(loss_arrays_with_PE))
+
+loss_without_PE_flat = [item for sublist in loss_arrays_without_PE for item in sublist]
+loss_with_PE_flat = [item for sublist in loss_arrays_with_PE for item in sublist]
+
+std_dev_without_PE = np.std(np.array(loss_without_PE_flat))
+std_dev_with_PE = np.std(loss_with_PE_flat)
+
+lower_without_PE = (mean_loss_without_PE - std_dev_without_PE).astype(np.float64)
+upper_without_PE = (mean_loss_without_PE + std_dev_without_PE).astype(np.float64)
+lower_with_PE = (mean_loss_with_PE - std_dev_with_PE).astype(np.float64)
+upper_with_PE = (mean_loss_with_PE + std_dev_with_PE).astype(np.float64)
+                    
+fig, axs = plt.subplots(1, 2, figsize=(16, 9))  # 1 row, 2 columns
+
+# Plot for without_PE
+axs[0].plot(np.arange(len(mean_loss_without_PE)), mean_loss_without_PE, label = 'without_PE')
+axs[0].fill_between(np.arange(len(mean_loss_without_PE)), lower_without_PE, upper_without_PE, color='blue', alpha=0.2)
+axs[0].set_ylabel('Loss')
+axs[0].set_xlabel('# Training Iter')
+axs[0].set_title(f"For environment '{env_name}' without PE (3 round seed test)")
+axs[0].legend()
+
+# Plot for with_PE
+axs[1].plot(np.arange(len(mean_loss_with_PE)), mean_loss_with_PE, label = 'with_PE')
+axs[1].fill_between(np.arange(len(mean_loss_with_PE)), lower_with_PE, upper_with_PE, color='red', alpha=0.2)
+axs[1].set_ylabel('Loss')
+axs[1].set_xlabel('# Training Iter')
+axs[1].set_title(f"For environment '{env_name}' with PE (3 round seed test)")
+axs[1].legend()
+
+plt.tight_layout()  # Adjusts subplot params so that subplots are nicely fit in the figure
+plt.savefig("./" + env_name + "_loss.png")
 plt.close()
