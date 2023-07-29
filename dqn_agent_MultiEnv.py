@@ -10,6 +10,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
+ACTION_SIZE = 3 # for e-greedy
 BUFFER_SIZE = int(1e5)  # replay buffer size
 BATCH_SIZE = 64 # 64        # minibatch size
 GAMMA = 0.99            # discount factor
@@ -23,7 +24,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class Agent_minigrid():
     """Interacts with and learns from the environment."""
 
-    def __init__(self, state_size, action_size, seed, PE_switch, env_name):
+    def __init__(self, state_size, action_size, seed, PE_switch, env_name, PE_pos):
         """Initialize an Agent object.
         
         Params
@@ -37,12 +38,14 @@ class Agent_minigrid():
         self.state_size = state_size
         self.action_size = action_size
         self.seed = random.seed(seed)
+        self.PE_switch = PE_switch
         self.seed_record = seed
         self.env_name = env_name
+        self.PE_pos = PE_pos
 
         # Q-Network
-        self.qnetwork_local = QNetwork(env_name).to(device)
-        self.qnetwork_target = QNetwork(env_name).to(device)
+        self.qnetwork_local = QNetwork(env_name, PE_pos).to(device)
+        self.qnetwork_target = QNetwork(env_name, PE_pos).to(device)
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
 
         # Replay memory
@@ -50,7 +53,7 @@ class Agent_minigrid():
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
     
-    def step(self, state, action, reward, next_state, done, time_step, PE_switch):
+    def step(self, state, action, reward, next_state, done, time_step):
         if KEY_WORD in self.env_name:
             # Access image from state dict
             if len(state) == 2:
@@ -69,9 +72,9 @@ class Agent_minigrid():
             # If enough samples are available in memory, get random subset and learn
             if len(self.memory) > BATCH_SIZE:
                 experiences = self.memory.sample()
-                self.learn(experiences, GAMMA, PE_switch)
+                self.learn(experiences, GAMMA)
 
-    def act(self, time_step, state, PE_switch, eps=0.):
+    def act(self, time_step, state, eps=0.):
         """Returns actions for given state as per current policy.
         
         Params
@@ -93,12 +96,12 @@ class Agent_minigrid():
             
         state = torch.from_numpy(state).float().unsqueeze(0).to(device)
         
-        if PE_switch:
+        if self.PE_switch:
             time_step = torch.tensor(time_step).to(device)
         
         self.qnetwork_local.eval()
         with torch.no_grad():
-            action_values = self.qnetwork_local(time_step, state, PE_switch)
+            action_values = self.qnetwork_local(time_step, state, self.PE_switch)
         self.qnetwork_local.train()
 
         # Epsilon-greedy action selection
@@ -106,7 +109,7 @@ class Agent_minigrid():
             return np.argmax(action_values.cpu().data.numpy())
         else:
             if KEY_WORD in self.env_name:
-                return random.choice(np.arange(3))
+                return random.choice(np.arange(ACTION_SIZE))
             else:
                 return random.choice(np.arange(self.action_size))
             
@@ -124,7 +127,7 @@ class Agent_minigrid():
 
             writer.writerow({'loss': loss})
 
-    def learn(self, experiences, gamma, PE_switch):
+    def learn(self, experiences, gamma):
         """Update value parameters using given batch of experience tuples.
 
         Params
@@ -138,19 +141,21 @@ class Agent_minigrid():
         next_states = next_states.squeeze(0)
 
         # Get max predicted Q values (for next states) from target model
-        Q_targets_next = self.qnetwork_target(time_step, next_states, PE_switch).detach().max(1)[0].unsqueeze(1)
+        Q_targets_next = self.qnetwork_target(time_step, next_states, self.PE_switch).detach().max(1)[0].unsqueeze(1)
         # Compute Q targets for current states 
         Q_targets = rewards + (gamma * Q_targets_next * (1 - dones))
 
         # Get expected Q values from local model
-        Q_expected = self.qnetwork_local(time_step, states, PE_switch).gather(1, actions)
+        Q_expected = self.qnetwork_local(time_step, states, self.PE_switch).gather(1, actions)
 
         # Compute loss
         loss = F.mse_loss(Q_expected, Q_targets)
-        if PE_switch:
-            self.write_loss_to_csv(loss = loss.item(), filename='loss_seed_' + str(self.seed_record ) + '_with_PE.csv')  # write loss to CSV
+        if self.PE_switch and self.PE_pos == 'obs':
+            self.write_loss_to_csv(loss = loss.item(), filename='/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/loss_seed_' + str(self.seed_record ) + '_with_PE_obs.csv')  # write loss to CSV
+        elif self.PE_switch and self.PE_pos == 'latent':
+            self.write_loss_to_csv(loss = loss.item(), filename='/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/loss_seed_' + str(self.seed_record ) + '_with_PE_latent.csv')  # write loss to CSV
         else:
-            self.write_loss_to_csv(loss = loss.item(), filename='loss_seed_' + str(self.seed_record ) + '_without_PE.csv')
+            self.write_loss_to_csv(loss = loss.item(), filename='/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/loss_seed_' + str(self.seed_record ) + '_without_PE.csv')
         # Minimize the loss
         self.optimizer.zero_grad()
         torch.autograd.set_detect_anomaly(True)
