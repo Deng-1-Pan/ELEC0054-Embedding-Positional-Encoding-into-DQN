@@ -10,7 +10,8 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-ACTION_SIZE = 3 # for e-greedy
+FILE_PATH = '/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/'
+ACTION_SIZE = 7 # for e-greedy
 BUFFER_SIZE = int(1e5)  # replay buffer size
 BATCH_SIZE = 64 # 64        # minibatch size
 GAMMA = 0.99            # discount factor
@@ -151,11 +152,11 @@ class Agent_minigrid():
         # Compute loss
         loss = F.mse_loss(Q_expected, Q_targets)
         if self.PE_switch and self.PE_pos == 'obs':
-            self.write_loss_to_csv(loss = loss.item(), filename='/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/loss_seed_' + str(self.seed_record ) + '_with_PE_obs.csv')  # write loss to CSV
+            self.write_loss_to_csv(loss = loss.item(), filename=FILE_PATH + 'loss_seed_' + str(self.seed_record ) + '_with_PE_obs.csv')  # write loss to CSV
         elif self.PE_switch and self.PE_pos == 'latent':
-            self.write_loss_to_csv(loss = loss.item(), filename='/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/loss_seed_' + str(self.seed_record ) + '_with_PE_latent.csv')  # write loss to CSV
+            self.write_loss_to_csv(loss = loss.item(), filename= FILE_PATH + 'loss_seed_' + str(self.seed_record ) + '_with_PE_latent.csv')  # write loss to CSV
         else:
-            self.write_loss_to_csv(loss = loss.item(), filename='/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/loss_seed_' + str(self.seed_record ) + '_without_PE.csv')
+            self.write_loss_to_csv(loss = loss.item(), filename=FILE_PATH + 'loss_seed_' + str(self.seed_record ) + '_without_PE.csv')
         # Minimize the loss
         self.optimizer.zero_grad()
         torch.autograd.set_detect_anomaly(True)

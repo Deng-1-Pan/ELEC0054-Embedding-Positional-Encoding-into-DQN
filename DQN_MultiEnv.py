@@ -12,13 +12,17 @@ from wrapper.Wrapper import MyViewSizeWrapper
 import matplotlib.pyplot as plt
 from minigrid.wrappers import ViewSizeWrapper
 
+FILE_PATH = '/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/'
 KEY_WORD = 'MiniGrid'   # check if the env is Minigrid
 RENDER = False # For minigrid only
+MAX_T = 200
+BUDGET = 2_000_000
+env_name = 'MiniGrid-DoorKey-8x8-v0' # 'MiniGrid-FourRooms-v0' # 'MiniGrid-Empty-8x8-v0' # 'MiniGrid-DoorKey-8x8-v0'
 
 plt.ion()  # enable interactive mode
 
 # Get a list of all CSV files that contain 'seed' in their name
-files = glob.glob('/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/*seed*.csv')
+files = glob.glob(FILE_PATH + '*seed*.csv')
 
 # Loop over the list of files and remove each one
 for file in files:
@@ -28,11 +32,9 @@ for file in files:
     except:
         print(f"Error while deleting file : {file}")
 
-env_name = 'MiniGrid-Empty-8x8-v0'
-
 # Remove the files that are trained last round
-if os.path.exists('/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/' + str(env_name) + "checkpoint.pth"):
-    os.remove('/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/' + str(env_name) + "checkpoint.pth")
+if os.path.exists(FILE_PATH + str(env_name) + "checkpoint.pth"):
+    os.remove(FILE_PATH +  str(env_name) + "checkpoint.pth")
   
     print("The file is deleted")
     
@@ -83,7 +85,7 @@ def compute_custom_means(lst):
 
     return means
 
-def dqn(n_episodes, render, max_t=200, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
+def dqn(n_episodes, render, PE_switch, PE_pos, max_t=MAX_T, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
     """Deep Q-Learning.
     
     Params
@@ -94,12 +96,13 @@ def dqn(n_episodes, render, max_t=200, eps_start=1.0, eps_end=0.01, eps_decay=0.
         eps_end (float): minimum value of epsilon
         eps_decay (float): multiplicative factor (per episode) for decreasing epsilon
     """
-    smooth_scores, scores = [], []
+    smooth_scores, scores, episode_scores = [], [], []
     smmoth_scores_window = deque(maxlen=10)
     eps = eps_start                    # initialize epsilon
     max_score, min_score = -1000, 1000
+    df = pd.DataFrame()
 
-    budget = 2_000
+    budget = BUDGET
     t_global = 0
     
     while t_global < budget:
@@ -108,6 +111,7 @@ def dqn(n_episodes, render, max_t=200, eps_start=1.0, eps_end=0.01, eps_decay=0.
         state = env.reset()
         score = 0
         
+        
         try:
             for t in range(max_t):
                 t_global += 1
@@ -115,7 +119,7 @@ def dqn(n_episodes, render, max_t=200, eps_start=1.0, eps_end=0.01, eps_decay=0.
                 action = agent.act(t, state, eps)
                 next_state, reward, done, info, Dict = env.step(action)
 
-                if render and env_name == 'MiniGrid-Empty-8x8-v0':
+                if RENDER:
                     position_info = np.array(env.agent_pos)
                     
                     if len(state) == 2:
@@ -130,16 +134,18 @@ def dqn(n_episodes, render, max_t=200, eps_start=1.0, eps_end=0.01, eps_decay=0.
                 agent.step(state, action, reward, next_state, done, t)
                 state = next_state
                 score += reward
+                episode_scores.append(score)
                 
                 if done:
                     break 
                           
+            
         except KeyboardInterrupt:
             plt.ioff()
             plt.show()       
         
         print(f'\nThe reward for episode {n_episodes} is {score}')
-        
+            
         smmoth_scores_window.append(score)
         scores.append(score)              # save most recent score
         max_score = max(max_score, score) # save max score
@@ -149,21 +155,47 @@ def dqn(n_episodes, render, max_t=200, eps_start=1.0, eps_end=0.01, eps_decay=0.
         if n_episodes % 10 == 0:
             smooth_scores.append(np.mean(smmoth_scores_window))
         
-    torch.save(agent.qnetwork_local.state_dict(), '/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/' + str(env_name) + 'checkpoint.pth')
+    if PE_switch:
+        torch.save(agent.qnetwork_local.state_dict(), FILE_PATH + env_name + '_' + str(seed) + '_' + PE_pos + '_checkpoint.pth')
+    else:
+        torch.save(agent.qnetwork_local.state_dict(), FILE_PATH + env_name + '_' + str(seed) + '_withoutPE_checkpoint.pth')
+    
+    if PE_switch and PE_pos == 'obs':
+        with open(FILE_PATH + 'scores_seed_'+ str(seed) + '_with_PE_obs.csv', 'w') as f:
+            writer = csv.writer(f)
+            writer.writerow(['Timestep', 'Scores'])
+            
+            for i, score in enumerate(episode_scores):
+                writer.writerow([i+1, score])
+                    
+    elif PE_switch and PE_pos == 'latent':
+        with open(FILE_PATH + 'scores_seed_'+ str(seed) + '_with_PE_latent.csv', 'w') as f:
+            writer = csv.writer(f)
+            writer.writerow(['Timestep', 'Scores'])
+            
+            for i, score in enumerate(episode_scores):
+                writer.writerow([i+1, score])
+    else:
+        with open(FILE_PATH + 'scores_seed_'+ str(seed) + '_without_PE.csv', 'w') as f:
+            writer = csv.writer(f)
+            writer.writerow(['Timestep', 'Scores'])
+            
+            for i, score in enumerate(episode_scores):
+                writer.writerow([i+1, score])
     
     return scores, max_score, min_score, smooth_scores
 
 return_without_PE, return_with_PE_obs, return_with_PE_latent = [], [], []
 
-PE_adding_position = [None, 'obs', 'latent']
+PE_adding_position = [None, 'obs', 'latent'] # [None, 'obs', 'latent']
 
-for idx, PE_switch in enumerate([False, True, True]):  # [False, True]
+for idx, PE_switch in enumerate([False, True, True]): # enumerate([False, True, True]):
     PE_pos = PE_adding_position[idx]
     for seed in np.random.randint(9999, size=3):
         
 
         agent = Agent_minigrid(state_size=state_size, action_size=action_size, seed=seed, PE_switch = PE_switch, env_name = env_name, PE_pos = PE_pos)
-        scores, max_score, min_score, smooth_scores = dqn(n_episodes, RENDER)
+        scores, max_score, min_score, smooth_scores = dqn(n_episodes, RENDER, PE_switch, PE_pos)
         
         if PE_switch and PE_pos == 'obs':
             return_with_PE_obs.append(scores)
@@ -171,19 +203,20 @@ for idx, PE_switch in enumerate([False, True, True]):  # [False, True]
             max_score_with_PE_obs = max_score
             min_score_with_PE_obs = min_score
             
-            with open('/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/rewards_seed_'+ str(seed) + '_with_PE_obs.csv', 'w') as f:
+            with open(FILE_PATH + 'rewards_seed_'+ str(seed) + '_with_PE_obs.csv', 'w') as f:
                 writer = csv.writer(f)
                 writer.writerow(['Episode', 'Reward'])
                 
                 for i, reward in enumerate(scores):
                     writer.writerow([i+1, reward])
+                    
         elif PE_switch and PE_pos == 'latent':
             return_with_PE_latent.append(scores)
             
             max_score_with_PE_latent = max_score
             min_score_with_PE_latent = min_score
             
-            with open('/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/rewards_seed_'+ str(seed) + '_with_PE_latent.csv', 'w') as f:
+            with open(FILE_PATH + 'rewards_seed_' + str(seed) + '_with_PE_latent.csv', 'w') as f:
                 writer = csv.writer(f)
                 writer.writerow(['Episode', 'Reward'])
                 
@@ -196,147 +229,264 @@ for idx, PE_switch in enumerate([False, True, True]):  # [False, True]
             max_score_without_PE = max_score
             min_score_without_PE = min_score
 
-            with open('/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/rewards_seed_'+ str(seed) + '_without_PE.csv', 'w') as f:
+            with open(FILE_PATH + 'rewards_seed_' + str(seed) + '_without_PE.csv', 'w') as f:
                 writer = csv.writer(f)
                 writer.writerow(['Episode', 'Reward'])
                 
                 for i, reward in enumerate(scores):
                     writer.writerow([i+1, reward])
+
+# scores_with_PE_obs = glob.glob(FILE_PATH + '*scores*with_PE*obs*.csv')
+# scores_with_PE_latent = glob.glob(FILE_PATH + '*scores*with_PE*latent*.csv')
+# scores_with_PE_obs_without_PE = glob.glob(FILE_PATH + '*scores*without_PE*.csv')
+
+# # Create an empty list to store the numpy arrays
+# scores_arrays_with_PE_obs, scores_arrays_with_PE_latent, scores_arrays_without_PE = [], [], []
+
+# # Loop through the files
+# for file in scores_with_PE_obs:
+#     # Read the CSV file
+#     df = pd.read_csv(file)
+    
+#     # Extract the 'loss' column and convert it to a numpy array
+#     loss = df['Scores'].to_numpy()
+    
+#     # Append the numpy array to the list
+#     scores_arrays_with_PE_obs.append(loss)
+    
+# # Loop through the files
+# for file in scores_with_PE_latent:
+#     # Read the CSV file
+#     df = pd.read_csv(file)
+    
+#     # Extract the 'loss' column and convert it to a numpy array
+#     loss = df['Scores'].to_numpy()
+    
+#     # Append the numpy array to the list
+#     scores_arrays_with_PE_latent.append(loss)
+    
+# for file in scores_with_PE_obs_without_PE:
+#     # Read the CSV file
+#     df = pd.read_csv(file)
+    
+#     # Extract the 'loss' column and convert it to a numpy array
+#     loss = df['Scores'].to_numpy()
+    
+#     # Append the numpy array to the list
+#     scores_arrays_without_PE.append(loss)
+
+# mean_score_without_PE = np.array(compute_custom_means(scores_arrays_without_PE))
+# mean_score_with_PE_obs = np.array(compute_custom_means(scores_arrays_with_PE_obs))
+# mean_score_with_PE_latent = np.array(compute_custom_means(scores_arrays_with_PE_latent))
+
+# score_without_PE_flat = [item for sublist in scores_arrays_without_PE for item in sublist]
+# score_with_PE_flat_obs = [item for sublist in scores_arrays_with_PE_obs for item in sublist]
+# score_with_PE_flat_latent = [item for sublist in scores_arrays_with_PE_latent for item in sublist]
+
+# std_dev_without_PE = np.std(np.array(score_without_PE_flat))
+# std_dev_with_PE_obs = np.std(np.array(score_with_PE_flat_obs))
+# std_dev_with_PE_latent = np.std(np.array(score_with_PE_flat_latent))
+
+# lower_without_PE = (mean_score_without_PE - std_dev_without_PE).astype(np.float64)
+# upper_without_PE = (mean_score_without_PE + std_dev_without_PE).astype(np.float64)
+# lower_with_PE_obs = (mean_score_with_PE_obs - std_dev_with_PE_obs).astype(np.float64)
+# upper_with_PE_obs = (mean_score_with_PE_obs + std_dev_with_PE_obs).astype(np.float64)
+# lower_with_PE_latent = (mean_score_with_PE_latent - std_dev_with_PE_latent).astype(np.float64)
+# upper_with_PE_latent = (mean_score_with_PE_latent + std_dev_with_PE_latent).astype(np.float64)
+
+# max_score_without_PE = max(score_without_PE_flat)
+# min_score_without_PE = min(score_without_PE_flat)
+# max_score_with_PE_obs = max(score_with_PE_flat_obs)
+# min_score_with_PE_obs = min(score_with_PE_flat_obs)
+# max_score_with_PE_latent = max(score_with_PE_flat_latent)
+# min_score_with_PE_latent = min(score_with_PE_flat_latent)
+
+# def rolling_average(arr, window):
+#     return pd.Series(arr).rolling(window=window).mean()
+
+# def rolling_std_dev(arr, window):
+#     return pd.Series(arr).rolling(window=window).std()
+
+# def upper_bound(arr, window):
+#     return rolling_average(arr, window) + rolling_std_dev(arr, window)
+
+# def lower_bound(arr, window):
+#     return rolling_average(arr, window) - rolling_std_dev(arr, window)
+
+# window_size = 100  # Adjust this value based on your needs
+
+# mean_return_without_PE_smooth = rolling_average(mean_score_without_PE, window_size)
+# upper_without_PE_smooth = upper_bound(mean_score_without_PE, window_size)
+# lower_without_PE_smooth = lower_bound(mean_score_without_PE, window_size)
+
+# mean_return_with_PE_obs_smooth = rolling_average(mean_score_with_PE_obs, window_size)
+# upper_with_PE_obs_smooth = upper_bound(mean_score_with_PE_obs, window_size)
+# lower_with_PE_obs_smooth = lower_bound(mean_score_with_PE_obs, window_size)
+
+# mean_return_with_PE_latent_smooth = rolling_average(mean_score_with_PE_latent, window_size)
+# upper_with_PE_latent_smooth = upper_bound(mean_score_with_PE_latent, window_size)
+# lower_with_PE_latent_smooth = lower_bound(mean_score_with_PE_latent, window_size)
+
+# fig, ax = plt.subplots(figsize=(16, 9))
+
+# ax.plot(np.arange(len(mean_return_without_PE_smooth)), mean_return_without_PE_smooth, label = 'without_PE')
+# ax.plot(np.arange(len(mean_return_with_PE_obs_smooth)), mean_return_with_PE_obs_smooth, label = 'with_PE_obs')
+# ax.plot(np.arange(len(mean_return_with_PE_latent_smooth)), mean_return_with_PE_latent_smooth, label = 'with_PE_latent')
+
+# ax.fill_between(np.arange(len(mean_return_without_PE_smooth)), lower_without_PE_smooth, upper_without_PE_smooth, color='blue', alpha=0.2)
+# ax.fill_between(np.arange(len(mean_return_with_PE_obs_smooth)), lower_with_PE_obs_smooth, upper_with_PE_obs_smooth, color='red', alpha=0.2)
+# ax.fill_between(np.arange(len(mean_return_with_PE_latent_smooth)), lower_with_PE_latent_smooth, upper_with_PE_latent_smooth, color='green', alpha=0.2)
+
+# ax.axhline(y=max_score_with_PE_obs, color='r', linestyle='--', label='Max score with PE in obs')
+# ax.axhline(y=min_score_with_PE_obs, color='g', linestyle='--', label='Min score with PE in obs')
+# ax.axhline(y=max_score_with_PE_latent, color='c', linestyle='--', label='Max score with PE in latent')
+# ax.axhline(y=min_score_with_PE_latent, color='m', linestyle='--', label='Min score with PE in latent')
+# ax.axhline(y=max_score_without_PE, color='b', linestyle='--', label='Max score without PE')
+# ax.axhline(y=min_score_without_PE, color='y', linestyle='--', label='Min score without PE')
+
+# ax.set_ylabel('Score/Reward')
+# ax.set_xlabel('Timestep')
+# ax.set_title(f"For environment '{env_name}' (3 round seed test)")
+
+# ax.legend()
+
+# plt.savefig(FILE_PATH + env_name + "_score_rolling.png")
+# plt.close()
+
+# fig, ax = plt.subplots(figsize=(16, 9))
+
+# ax.plot(np.arange(len(mean_score_without_PE)), mean_score_without_PE, label = 'without_PE')
+# ax.plot(np.arange(len(mean_score_with_PE_obs)), mean_score_with_PE_obs, label = 'with_PE_obs')
+# ax.plot(np.arange(len(mean_score_with_PE_latent)), mean_score_with_PE_latent, label = 'with_PE_latent')
+
+# ax.fill_between(np.arange(len(mean_score_without_PE)), lower_without_PE, upper_without_PE, color='blue', alpha=0.2)
+# ax.fill_between(np.arange(len(mean_score_with_PE_obs)), lower_with_PE_obs, upper_with_PE_obs, color='red', alpha=0.2)
+# ax.fill_between(np.arange(len(mean_score_with_PE_latent)), lower_with_PE_latent, upper_with_PE_latent, color='green', alpha=0.2)
+
+# ax.axhline(y=max_score_with_PE_obs, color='r', linestyle='--', label='Max score with PE in obs')
+# ax.axhline(y=min_score_with_PE_obs, color='g', linestyle='--', label='Min score with PE in obs')
+# ax.axhline(y=max_score_with_PE_latent, color='c', linestyle='--', label='Max score with PE in latent')
+# ax.axhline(y=min_score_with_PE_latent, color='m', linestyle='--', label='Min score with PE in latent')
+# ax.axhline(y=max_score_without_PE, color='b', linestyle='--', label='Max score without PE')
+# ax.axhline(y=min_score_without_PE, color='y', linestyle='--', label='Min score without PE')
+
+# ax.set_ylabel('Score/Reward')
+# ax.set_xlabel('Timestep')
+# ax.set_title(f"For environment '{env_name}' (3 round seed test)")
+
+# ax.legend()
+
+# plt.savefig(FILE_PATH + env_name + "_score.png")
+# plt.close()
+
+# # Find all CSV files that contain 'loss_seed' in their names
+# files_with_PE_obs = glob.glob(FILE_PATH + '*loss_seed*with_PE*obs*.csv')
+# files_with_PE_latent = glob.glob(FILE_PATH + '*loss_seed*with_PE*latent*.csv')
+# files_without_PE = glob.glob(FILE_PATH + '*loss_seed*without_PE*.csv')
+
+# # Create an empty list to store the numpy arrays
+# loss_arrays_with_PE_obs, loss_arrays_with_PE_latent, loss_arrays_without_PE = [], [], []
+
+# # Loop through the files
+# for file in files_with_PE_obs:
+#     # Read the CSV file
+#     df = pd.read_csv(file)
+    
+#     # Extract the 'loss' column and convert it to a numpy array
+#     loss = df['loss'].to_numpy()
+    
+#     # Append the numpy array to the list
+#     loss_arrays_with_PE_obs.append(loss)
+    
+# for file in files_with_PE_latent:
+#     # Read the CSV file
+#     df = pd.read_csv(file)
+    
+#     # Extract the 'loss' column and convert it to a numpy array
+#     loss = df['loss'].to_numpy()
+    
+#     # Append the numpy array to the list
+#     loss_arrays_with_PE_latent.append(loss)
+    
+# for file in files_without_PE:
+#     # Read the CSV file
+#     df = pd.read_csv(file)
+    
+#     # Extract the 'loss' column and convert it to a numpy array
+#     loss = df['loss'].to_numpy()
+    
+#     # Append the numpy array to the list
+#     loss_arrays_without_PE.append(loss)
+    
+# mean_loss_without_PE = np.array(compute_custom_means(loss_arrays_without_PE))
+# mean_loss_with_PE_obs = np.array(compute_custom_means(loss_arrays_with_PE_obs))
+# mean_loss_with_PE_latent = np.array(compute_custom_means(loss_arrays_with_PE_latent))
+
+# loss_without_PE_flat = [item for sublist in loss_arrays_without_PE for item in sublist]
+# loss_with_PE_flat_obs = [item for sublist in loss_arrays_with_PE_obs for item in sublist]
+# loss_with_PE_flat_latent = [item for sublist in loss_arrays_with_PE_latent for item in sublist]
+
+# std_dev_without_PE = np.std(np.array(loss_without_PE_flat))
+# std_dev_with_PE_obs = np.std(loss_with_PE_flat_obs)
+# std_dev_with_PE_latent = np.std(loss_with_PE_flat_latent)
+
+# lower_without_PE = (mean_loss_without_PE - std_dev_without_PE).astype(np.float64)
+# upper_without_PE = (mean_loss_without_PE + std_dev_without_PE).astype(np.float64)
+# lower_with_PE_obs = (mean_loss_with_PE_obs - std_dev_with_PE_obs).astype(np.float64)
+# upper_with_PE_obs = (mean_loss_with_PE_obs + std_dev_with_PE_obs).astype(np.float64)
+# lower_with_PE_latent = (mean_loss_with_PE_latent - std_dev_with_PE_latent).astype(np.float64)
+# upper_with_PE_latent = (mean_loss_with_PE_latent + std_dev_with_PE_latent).astype(np.float64)
                     
+# # fig, axs = plt.subplots(1, 3, figsize=(16, 6))  # 1 row, 2 columns
+# fig, axs = plt.subplots(figsize=(16, 9)) 
 
-mean_return_without_PE = np.array(compute_custom_means(return_without_PE))
-mean_return_with_PE_obs = np.array(compute_custom_means(return_with_PE_obs))
-mean_return_with_PE_latent = np.array(compute_custom_means(return_with_PE_latent))
+# mean_loss_without_PE_series = pd.Series(mean_loss_without_PE)
+# mean_loss_with_PE_obs_series = pd.Series(mean_loss_with_PE_obs)
+# mean_loss_with_PE_latent_series = pd.Series(mean_loss_with_PE_latent)
 
-return_without_PE_flat = [item for sublist in return_without_PE for item in sublist]
-return_with_PE_flat_obs = [item for sublist in return_with_PE_obs for item in sublist]
-return_with_PE_flat_latent = [item for sublist in return_with_PE_latent for item in sublist]
+# # Calculate the rolling average
+# rolling_avg_without_PE = mean_loss_without_PE_series.rolling(window=100).mean()
+# rolling_avg_with_PE_obs = mean_loss_with_PE_obs_series.rolling(window=100).mean()
+# rolling_avg_with_PE_latent = mean_loss_with_PE_latent_series.rolling(window=100).mean()
 
-std_dev_without_PE = np.std(np.array(return_without_PE_flat))
-std_dev_with_PE_obs = np.std(np.array(return_with_PE_flat_obs))
-std_dev_with_PE_latent = np.std(np.array(return_with_PE_flat_latent))
+# # Calculate the rolling standard deviation
+# rolling_std_without_PE = mean_loss_without_PE_series.rolling(window=100).std()
+# rolling_std_with_PE_obs = mean_loss_with_PE_obs_series.rolling(window=100).std()
+# rolling_std_with_PE_latent = mean_loss_with_PE_latent_series.rolling(window=100).std()
 
-lower_without_PE = (mean_return_without_PE - std_dev_without_PE).astype(np.float64)
-upper_without_PE = (mean_return_without_PE + std_dev_without_PE).astype(np.float64)
-lower_with_PE_obs = (mean_return_with_PE_obs - std_dev_with_PE_obs).astype(np.float64)
-upper_with_PE_obs = (mean_return_with_PE_obs + std_dev_with_PE_obs).astype(np.float64)
-lower_with_PE_latent = (mean_return_with_PE_latent - std_dev_with_PE_latent).astype(np.float64)
-upper_with_PE_latent = (mean_return_with_PE_latent + std_dev_with_PE_latent).astype(np.float64)
+# # Calculate the upper and lower bounds for the plots
+# upper_without_PE = rolling_avg_without_PE + rolling_std_without_PE
+# lower_without_PE = rolling_avg_without_PE - rolling_std_without_PE
 
-fig, ax = plt.subplots(figsize=(16, 9))
+# upper_with_PE_obs = rolling_avg_with_PE_obs + rolling_std_with_PE_obs
+# lower_with_PE_obs = rolling_avg_with_PE_obs - rolling_std_with_PE_obs
 
-ax.plot(np.arange(len(mean_return_without_PE)), mean_return_without_PE, label = 'without_PE')
-ax.plot(np.arange(len(mean_return_with_PE_obs)), mean_return_with_PE_obs, label = 'with_PE_obs')
-ax.plot(np.arange(len(mean_return_with_PE_latent)), mean_return_with_PE_latent, label = 'with_PE_latent')
+# upper_with_PE_latent = rolling_avg_with_PE_latent + rolling_std_with_PE_latent
+# lower_with_PE_latent = rolling_avg_with_PE_latent - rolling_std_with_PE_latent
 
-ax.fill_between(np.arange(len(mean_return_without_PE)), lower_without_PE, upper_without_PE, color='blue', alpha=0.2)
-ax.fill_between(np.arange(len(mean_return_with_PE_obs)), lower_with_PE_obs, upper_with_PE_obs, color='red', alpha=0.2)
-ax.fill_between(np.arange(len(mean_return_with_PE_latent)), lower_with_PE_latent, upper_with_PE_latent, color='green', alpha=0.2)
+# # Plot the rolling average with the standard deviation boundaries
+# axs.plot(np.arange(len(rolling_avg_without_PE)), rolling_avg_without_PE, color='blue', label = 'without_PE')
+# axs.fill_between(np.arange(len(rolling_avg_without_PE)), lower_without_PE, upper_without_PE, color='blue', alpha=0.2)
 
-ax.axhline(y=max_score_with_PE_obs, color='r', linestyle='--', label='Max score with PE in obs')
-ax.axhline(y=min_score_with_PE_obs, color='g', linestyle='--', label='Min score with PE in obs')
-ax.axhline(y=max_score_with_PE_latent, color='c', linestyle='--', label='Max score with PE in latent')
-ax.axhline(y=min_score_with_PE_latent, color='m', linestyle='--', label='Min score with PE in latent')
-ax.axhline(y=max_score_without_PE, color='b', linestyle='--', label='Max score without PE')
-ax.axhline(y=min_score_without_PE, color='y', linestyle='--', label='Min score without PE')
+# axs.plot(np.arange(len(rolling_avg_with_PE_obs)), rolling_avg_with_PE_obs, color='red', label = 'with_PE_obs')
+# axs.fill_between(np.arange(len(rolling_avg_with_PE_obs)), lower_with_PE_obs, upper_with_PE_obs, color='red', alpha=0.2)
 
-ax.set_ylabel('Score/Return')
-ax.set_xlabel('Episode #')
-ax.set_title(f"For environment '{env_name}' (3 round seed test)")
-
-ax.legend()
-
-plt.savefig("/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/" + env_name + "_reward.png")
-plt.close()
+# axs.plot(np.arange(len(rolling_avg_with_PE_latent)), rolling_avg_with_PE_latent,color='green', label = 'with_PE_latent')
+# axs.fill_between(np.arange(len(rolling_avg_with_PE_latent)), lower_with_PE_latent, upper_with_PE_latent, color='green', alpha=0.2)
 
 
-# Find all CSV files that contain 'loss_seed' in their names
-files_with_PE_obs = glob.glob('/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/*loss_seed*with_PE*obs*.csv')
-files_with_PE_latent = glob.glob('/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/*loss_seed*with_PE*latent*.csv')
-files_without_PE = glob.glob('/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/*loss_seed*without_PE*.csv')
+# # Plot the rolling average
+# axs.plot(np.arange(len(rolling_avg_without_PE)), rolling_avg_without_PE, color='blue', label = 'without_PE')
+# axs.plot(np.arange(len(rolling_avg_with_PE_obs)), rolling_avg_with_PE_obs, color='red', label = 'with_PE_obs')
+# axs.plot(np.arange(len(rolling_avg_with_PE_latent)), rolling_avg_with_PE_latent,color='green', label = 'with_PE_latent')
 
-# Create an empty list to store the numpy arrays
-loss_arrays_with_PE_obs, loss_arrays_with_PE_latent, loss_arrays_without_PE = [], [], []
+# axs.set_ylabel('Loss')
+# axs.set_xlabel('# Training Iter')
+# axs.legend()
 
-# Loop through the files
-for file in files_with_PE_obs:
-    # Read the CSV file
-    df = pd.read_csv(file)
-    
-    # Extract the 'loss' column and convert it to a numpy array
-    loss = df['loss'].to_numpy()
-    
-    # Append the numpy array to the list
-    loss_arrays_with_PE_obs.append(loss)
-    
-for file in files_with_PE_latent:
-    # Read the CSV file
-    df = pd.read_csv(file)
-    
-    # Extract the 'loss' column and convert it to a numpy array
-    loss = df['loss'].to_numpy()
-    
-    # Append the numpy array to the list
-    loss_arrays_with_PE_latent.append(loss)
-    
-for file in files_without_PE:
-    # Read the CSV file
-    df = pd.read_csv(file)
-    
-    # Extract the 'loss' column and convert it to a numpy array
-    loss = df['loss'].to_numpy()
-    
-    # Append the numpy array to the list
-    loss_arrays_without_PE.append(loss)
-    
-mean_loss_without_PE = np.array(compute_custom_means(loss_arrays_without_PE))
-mean_loss_with_PE_obs = np.array(compute_custom_means(loss_arrays_with_PE_obs))
-mean_loss_with_PE_latent = np.array(compute_custom_means(loss_arrays_with_PE_latent))
+# fig.suptitle(f"For environment '{env_name}' (3 round seed test)")
+# plt.tight_layout()  # Adjusts subplot params so that subplots are nicely fit in the figure
+# plt.savefig(FILE_PATH + env_name + "_loss.png")
+# plt.close()
 
-loss_without_PE_flat = [item for sublist in loss_arrays_without_PE for item in sublist]
-loss_with_PE_flat_obs = [item for sublist in loss_arrays_with_PE_obs for item in sublist]
-loss_with_PE_flat_latent = [item for sublist in loss_arrays_with_PE_latent for item in sublist]
-
-std_dev_without_PE = np.std(np.array(loss_without_PE_flat))
-std_dev_with_PE_obs = np.std(loss_with_PE_flat_obs)
-std_dev_with_PE_latent = np.std(loss_with_PE_flat_latent)
-
-lower_without_PE = (mean_loss_without_PE - std_dev_without_PE).astype(np.float64)
-upper_without_PE = (mean_loss_without_PE + std_dev_without_PE).astype(np.float64)
-lower_with_PE_obs = (mean_loss_with_PE_obs - std_dev_with_PE_obs).astype(np.float64)
-upper_with_PE_obs = (mean_loss_with_PE_obs + std_dev_with_PE_obs).astype(np.float64)
-lower_with_PE_latent = (mean_loss_with_PE_latent - std_dev_with_PE_latent).astype(np.float64)
-upper_with_PE_latent = (mean_loss_with_PE_latent + std_dev_with_PE_latent).astype(np.float64)
-                    
-fig, axs = plt.subplots(1, 3, figsize=(16, 6))  # 1 row, 2 columns
-
-# Plot for without_PE
-axs[0].plot(np.arange(len(mean_loss_without_PE)), mean_loss_without_PE, color='blue', label = 'without_PE')
-axs[0].fill_between(np.arange(len(mean_loss_without_PE)), lower_without_PE, upper_without_PE, color='blue', alpha=0.2)
-axs[0].set_ylabel('Loss')
-axs[0].set_xlabel('# Training Iter')
-# axs[0].set_title(f"For environment '{env_name}' without PE (3 round seed test)")
-axs[0].legend()
-
-# Plot for with_PE
-axs[1].plot(np.arange(len(mean_loss_with_PE_obs)), mean_loss_with_PE_obs, color='red', label = 'with_PE_obs')
-axs[1].fill_between(np.arange(len(mean_loss_with_PE_obs)), lower_with_PE_obs, upper_with_PE_obs, color='red', alpha=0.2)
-axs[1].set_ylabel('Loss')
-axs[1].set_xlabel('# Training Iter')
-# axs[1].set_title(f"For environment '{env_name}' with PE in obs (3 round seed test)")
-axs[1].legend()
-
-# Plot for with_PE
-axs[2].plot(np.arange(len(mean_loss_with_PE_latent)), mean_loss_with_PE_latent,color='green', label = 'with_PE_latent')
-axs[2].fill_between(np.arange(len(mean_loss_with_PE_latent)), lower_with_PE_latent, upper_with_PE_latent, color='green', alpha=0.2)
-axs[2].set_ylabel('Loss')
-axs[2].set_xlabel('# Training Iter')
-# axs[2].set_title(f"For environment '{env_name}' with PE in latent (3 round seed test)")
-axs[2].legend()
-
-plt.title("For environment '{env_name}' (3 round seed test)")
-plt.tight_layout()  # Adjusts subplot params so that subplots are nicely fit in the figure
-plt.savefig("/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/" + env_name + "_loss.png")
-plt.close()
-
-# os.system("export $(cat /proc/1/environ |tr '\\0' '\\n' | grep MATCLOUD_CANCELTOKEN)&&/public/script/matncli node cancel -url https://matpool.com/api/public/node")
+os.system("export $(cat /proc/1/environ |tr '\\0' '\\n' | grep MATCLOUD_CANCELTOKEN)&&/public/script/matncli node cancel -url https://matpool.com/api/public/node")
