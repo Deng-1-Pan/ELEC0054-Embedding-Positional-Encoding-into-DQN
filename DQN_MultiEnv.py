@@ -10,14 +10,15 @@ from collections import deque
 from dqn_agent_MultiEnv import Agent_minigrid
 from wrapper.Wrapper import MyViewSizeWrapper
 import matplotlib.pyplot as plt
-from minigrid.wrappers import ViewSizeWrapper
+from minigrid.wrappers import ViewSizeWrapper, RGBImgPartialObsWrapper
 
-FILE_PATH = '/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/'
+FILE_PATH = './' #'/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/'
 KEY_WORD = 'MiniGrid'   # check if the env is Minigrid
 RENDER = False # For minigrid only
+CONV_SWITCH = True
 MAX_T = 200
-BUDGET = 2_000_000
-env_name = 'MiniGrid-DoorKey-8x8-v0' # 'MiniGrid-FourRooms-v0' # 'MiniGrid-Empty-8x8-v0' # 'MiniGrid-DoorKey-8x8-v0'
+BUDGET = 2_000
+env_name = 'MiniGrid-Empty-8x8-v0' # 'MiniGrid-FourRooms-v0' # 'MiniGrid-Empty-8x8-v0' # 'MiniGrid-DoorKey-8x8-v0'
 
 plt.ion()  # enable interactive mode
 
@@ -49,11 +50,17 @@ if KEY_WORD in env_name:
     if RENDER:
         env = gym.make(env_name, render_mode='rgb_array')
         env = MyViewSizeWrapper(env, agent_view_size=3)
+    elif CONV_SWITCH:
+        env = gym.make(env_name)
+        env = RGBImgPartialObsWrapper(env)
     else:
         env = gym.make(env_name)
         env = ViewSizeWrapper(env, agent_view_size=3)
         
-    state_size = list(np.shape(env.observation_space.sample()['image']))
+    if CONV_SWITCH:
+        state_size = list(np.shape(env.observation_space.sample()['image'][32:56, 16:40, :]))
+    else:
+        state_size = list(np.shape(env.observation_space.sample()['image']))
     action_size = env.action_space.n
 else:
     env = gym.make(env_name)
@@ -187,7 +194,7 @@ for idx, PE_switch in enumerate([False, True, True]): # enumerate([False, True, 
     for seed in np.random.randint(9999, size=3):
         
 
-        agent = Agent_minigrid(state_size=state_size, action_size=action_size, seed=seed, PE_switch = PE_switch, env_name = env_name, PE_pos = PE_pos)
+        agent = Agent_minigrid(state_size, action_size, seed, PE_switch, env_name, PE_pos, CONV_SWITCH)
         scores, max_score, min_score, smooth_scores = dqn(n_episodes, RENDER, PE_switch, PE_pos)
         
         if PE_switch and PE_pos == 'obs':
@@ -482,4 +489,4 @@ for idx, PE_switch in enumerate([False, True, True]): # enumerate([False, True, 
 # plt.savefig(FILE_PATH + env_name + "_loss.png")
 # plt.close()
 
-os.system("export $(cat /proc/1/environ |tr '\\0' '\\n' | grep MATCLOUD_CANCELTOKEN)&&/public/script/matncli node cancel -url https://matpool.com/api/public/node")
+# os.system("export $(cat /proc/1/environ |tr '\\0' '\\n' | grep MATCLOUD_CANCELTOKEN)&&/public/script/matncli node cancel -url https://matpool.com/api/public/node")

@@ -10,7 +10,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-FILE_PATH = '/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/'
+FILE_PATH = './' # '/mnt/ELEC0054-Embedding-Positional-Encoding-into-DQN/'
 ACTION_SIZE = 7 # for e-greedy
 BUFFER_SIZE = int(1e5)  # replay buffer size
 BATCH_SIZE = 64 # 64        # minibatch size
@@ -25,7 +25,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class Agent_minigrid():
     """Interacts with and learns from the environment."""
 
-    def __init__(self, state_size, action_size, seed, PE_switch, env_name, PE_pos):
+    def __init__(self, state_size, action_size, seed, PE_switch, env_name, PE_pos, CONV_SWITCH):
         """Initialize an Agent object.
         
         Params
@@ -43,26 +43,34 @@ class Agent_minigrid():
         self.seed_record = seed
         self.env_name = env_name
         self.PE_pos = PE_pos
+        self.CONV_SWITCH = CONV_SWITCH
 
         # Q-Network
-        self.qnetwork_local = QNetwork(env_name, PE_pos).to(device)
-        self.qnetwork_target = QNetwork(env_name, PE_pos).to(device)
+        self.qnetwork_local = QNetwork(env_name, PE_pos, CONV_SWITCH).to(device)
+        self.qnetwork_target = QNetwork(env_name, PE_pos, CONV_SWITCH).to(device)
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
 
         # Replay memory
-        self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed, env_name)
+        self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed, env_name, CONV_SWITCH)
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
     
     def step(self, state, action, reward, next_state, done, time_step):
+        
         if KEY_WORD in self.env_name:
             # Access image from state dict
             if len(state) == 2:
-                state = state[0]['image']
-                next_state = next_state['image']
+                state = state[0]
+            if len(next_state) == 2:
+                next_state = next_state[0]
+
+            if self.CONV_SWITCH:
+                state = state['image'][32:56, 16:40, :]
+                next_state = next_state['image'][32:56, 16:40, :]
             else:
                 state = state['image']
                 next_state = next_state['image']
+
         
         # Save experience in replay memory
         self.memory.add(state, action, reward, next_state, done, time_step)
@@ -83,17 +91,17 @@ class Agent_minigrid():
             state (array_like): current state
             eps (float): epsilon, for epsilon-greedy action selection
         """
-        
-        if len(state) == 2:
-            if KEY_WORD in self.env_name:
-                state = state[0]['image']
+        if self.CONV_SWITCH:
+            if len(state) == 2:
+                state = state[0]['image'][32:56, 16:40, :] if KEY_WORD in self.env_name else state[0]
             else:
-                state = state[0]
+                state = state['image'][32:56, 16:40, :] if KEY_WORD in self.env_name else state
         else:
-            if KEY_WORD in self.env_name:
-                state = state['image'] 
+            if len(state) == 2:
+                state = state[0]['image'] if KEY_WORD in self.env_name else state[0]
             else:
-                state = state
+                state = state['image'] if KEY_WORD in self.env_name else state
+
             
         state = torch.from_numpy(state).float().unsqueeze(0).to(device)
         
@@ -183,7 +191,7 @@ class Agent_minigrid():
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
 
-    def __init__(self, action_size, buffer_size, batch_size, seed, env_name):
+    def __init__(self, action_size, buffer_size, batch_size, seed, env_name, CONV_SWITCH):
         """Initialize a ReplayBuffer object.
 
         Params
@@ -199,6 +207,7 @@ class ReplayBuffer:
         self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done", "time_step"])
         self.seed = random.seed(seed)
         self.env_name = env_name
+        self.CONV_SWITCH = CONV_SWITCH
     
     def add(self, state, action, reward, next_state, done, time_step):
         """Add a new experience to memory."""
@@ -229,11 +238,20 @@ class ReplayBuffer:
             states = torch.from_numpy(np.concatenate([e.state for e in experiences if e is not None])).float().to(device)
             
             # Reshape state to add batch dim
-            states = states.reshape(BATCH_SIZE, 3, 3, 3)
+            if self.CONV_SWITCH:
+                states = states.reshape(BATCH_SIZE, 24, 24, 3)
+            else:
+                states = states.reshape(BATCH_SIZE, 3, 3, 3)
             
             # Same for next states
             next_states = torch.from_numpy(np.concatenate([e.next_state for e in experiences if e is not None])).float().to(device)  
-            next_states = next_states.reshape(BATCH_SIZE, 3, 3, 3)
+            
+            if self.CONV_SWITCH:
+                next_states = next_states.reshape(BATCH_SIZE, 24, 24, 3)
+            else:
+                next_states = next_states.reshape(BATCH_SIZE, 3, 3, 3)
+                
+                
         else:
             states = torch.from_numpy(np.vstack([e.state for e in experiences if e is not None])).float().to(device)
             next_states = torch.from_numpy(np.vstack([e.next_state for e in experiences if e is not None])).float().to(device)
