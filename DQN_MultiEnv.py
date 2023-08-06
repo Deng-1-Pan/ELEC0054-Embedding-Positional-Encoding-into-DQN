@@ -33,20 +33,17 @@ for file in files:
         print(f"Error while deleting file : {file}")
 
 # Remove the files that are trained last round
-if os.path.exists(FILE_PATH + str(env_name) + "checkpoint.pth"):
-    os.remove(FILE_PATH +  str(env_name) + "checkpoint.pth")
-  
-    print("The file is deleted")
-    
-# if os.path.exists('loss.csv'):
-#     os.remove("loss.csv")
-#     print("The file is deleted")
-    
-# if os.path.exists('rewards.csv'):
-#     os.remove("rewards.csv")
-#     print("The file is deleted")
+files_m = glob.glob(FILE_PATH + '*checkpoint*.pth')
 
-  
+# Loop over the list of files and remove each one
+for file in files_m:
+    try:
+        os.remove(file)
+        print(f"File {file} has been removed successfully")
+    except:
+        print(f"Error while deleting file : {file}")
+    
+
 if KEY_WORD in env_name:
     # Whether to view the env or not  
     if RENDER:
@@ -63,11 +60,6 @@ else:
     
     state_size = np.shape(env.observation_space.sample())
     action_size = env.action_space.n
-    
-
-env.reset()
-
-n_episodes = 0
 
 def compute_custom_means(lst):
     # Get the maximum length of the sublists
@@ -108,7 +100,7 @@ def dqn(n_episodes, render, PE_switch, PE_pos, max_t=MAX_T, eps_start=1.0, eps_e
     while t_global < budget:
         
         n_episodes += 1
-        state = env.reset()
+        state = env.reset(seed = int(seed))
         score = 0
         
         
@@ -185,6 +177,7 @@ def dqn(n_episodes, render, PE_switch, PE_pos, max_t=MAX_T, eps_start=1.0, eps_e
     
     return scores, max_score, min_score, smooth_scores
 
+n_episodes = 0
 return_without_PE, return_with_PE_obs, return_with_PE_latent = [], [], []
 
 PE_adding_position = [None, 'obs', 'latent'] # [None, 'obs', 'latent']
