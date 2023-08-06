@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 KEY_WORD = 'MiniGrid'   # check if the env is Minigrid
-OUTPUT_DIM = 7 
+OUTPUT_DIM = 3
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -46,56 +46,42 @@ class QNetwork(nn.Module):
         """
         
         with torch.no_grad():
+            
+            # Remember the original shape of x
+            original_shape = x.shape
+            
+            # Flatten x
+            x = x.view(x.size(0), -1)
+            
             if self.PE_pos == 'obs':
-                # Create tensors of the same shape as x for the sin and cos components
+                i = torch.arange(x.size(-1), device=device).float().unsqueeze(0).repeat(x.size(0), 1)
                 
-                if self.CONV_SWITCH:
-                    i = torch.arange(x.size(-1) // 2, device=device).float().unsqueeze(0).repeat(x.size(0), 1)
-                    
-                    sin_component = torch.sin(timestep / torch.pow(10000, 2 * torch.div(i, 2, rounding_mode='floor') / (x.size(-1) // 2))).unsqueeze(-1).unsqueeze(-1)
-                    cos_component = torch.cos(timestep / torch.pow(10000, 2 * torch.div(i, 2, rounding_mode='floor') / (x.size(-1) // 2))).unsqueeze(-1).unsqueeze(-1)
-                
-                    # Apply the positional encoding
-                    x[:, ::2] += sin_component
-                    x[:, 1::2] += cos_component
-                    
-                else:
-                    i = torch.arange(x.size(-1), device=device).float().unsqueeze(0).repeat(x.size(0), 1)
-                    
-                    sin_component = torch.sin(timestep / torch.pow(10000, 2 * torch.div(i, 2, rounding_mode='floor') / x.size(-1)))
-                    cos_component = torch.cos(timestep / torch.pow(10000, 2 * torch.div(i, 2, rounding_mode='floor') / x.size(-1)))
+                sin_component = torch.sin(timestep / torch.pow(10000, 2 * torch.div(i, 2, rounding_mode='floor') / x.size(-1)))
+                cos_component = torch.cos(timestep / torch.pow(10000, 2 * torch.div(i, 2, rounding_mode='floor') / x.size(-1)))
 
-                    # Apply the positional encoding
-                    if x.shape[0] == 1:
-                        x[0, ::2] += sin_component[0, ::2]
-                        x[0, 1::2] += cos_component[0, 1::2]
-                    else:
-                        x[:, ::2] += sin_component[:, ::2]
-                        x[:, 1::2] += cos_component[:, 1::2]
+                # Apply the positional encoding
+                if x.shape[0] == 1:
+                    x[0, ::2] += sin_component[0, ::2]
+                    x[0, 1::2] += cos_component[0, 1::2]
+                else:
+                    x[:, ::2] += sin_component[:, ::2]
+                    x[:, 1::2] += cos_component[:, 1::2]
                     
             elif self.PE_pos == 'latent':
-                # Create tensors of the same shape as x for the sin and cos components
-                if self.CONV_SWITCH:
-                    # Create tensors of the same shape as x for the sin and cos components
-                    i = torch.arange(x.size(-1) // 2, device=device).float().unsqueeze(0).repeat(x.size(0), 1)
-                    sin_component = torch.sin(timestep / torch.pow(10000, 2 * torch.div(i, 2, rounding_mode='floor') / (x.size(-1) // 2)))
-                    cos_component = torch.cos(timestep / torch.pow(10000, 2 * torch.div(i, 2, rounding_mode='floor') / (x.size(-1) // 2)))
+                i = torch.arange(x.size(-1), device=device).float().unsqueeze(0).repeat(x.size(0), 1)
+                sin_component = torch.sin(timestep / torch.pow(10000, 2 * torch.div(i, 2, rounding_mode='floor') / x.size(-1)))
+                cos_component = torch.cos(timestep / torch.pow(10000, 2 * torch.div(i, 2, rounding_mode='floor') / x.size(-1)))
 
-                    # Apply the positional encoding
-                    x[:, ::2] += sin_component
-                    x[:, 1::2] += cos_component
+                # Apply the positional encoding
+                if x.shape[0] == 1:
+                    x[0, ::2] += sin_component[0, ::2]
+                    x[0, 1::2] += cos_component[0, 1::2]
                 else:
-                    i = torch.arange(x.size(-1), device=device).float().unsqueeze(0).repeat(x.size(0), 1)
-                    sin_component = torch.sin(timestep / torch.pow(10000, 2 * torch.div(i, 2, rounding_mode='floor') / x.size(-1)))
-                    cos_component = torch.cos(timestep / torch.pow(10000, 2 * torch.div(i, 2, rounding_mode='floor') / x.size(-1)))
-
-                    # Apply the positional encoding
-                    if x.shape[0] == 1:
-                        x[0, ::2] += sin_component[0, ::2]
-                        x[0, 1::2] += cos_component[0, 1::2]
-                    else:
-                        x[:, ::2] += sin_component[:, ::2]
-                        x[:, 1::2] += cos_component[:, 1::2]
+                    x[:, ::2] += sin_component[:, ::2]
+                    x[:, 1::2] += cos_component[:, 1::2]
+                        
+            # Reshape x back to its original shape
+            x = x.view(original_shape)
 
         return x.detach()
 
@@ -125,10 +111,12 @@ class QNetwork(nn.Module):
         
         if PE_switch and self.PE_pos == 'latent' and self.CONV_SWITCH:
             x = self.positional_encoding(x, timestep)
+            
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = F.relu(self.fc3(x))
         x = F.relu(self.fc4(x))
+        
         if PE_switch and self.PE_pos == 'latent' and not self.CONV_SWITCH:
             x = self.positional_encoding(x, timestep)
         
