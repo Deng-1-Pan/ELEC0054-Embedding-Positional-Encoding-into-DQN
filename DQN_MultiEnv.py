@@ -23,7 +23,7 @@ RENDER = False # For minigrid only
 CONV_SWITCH = True
 MAX_T = 200
 BUDGET = 2_000
-env_name = 'MiniGrid-Empty-8x8-v0' # 'MiniGrid-FourRooms-v0' # 'MiniGrid-Empty-8x8-v0' # 'MiniGrid-DoorKey-8x8-v0'
+env_name = 'MiniGrid-DoorKey-8x8-v0' # 'MiniGrid-FourRooms-v0' # 'MiniGrid-Empty-8x8-v0' # 'MiniGrid-DoorKey-8x8-v0'
 
 plt.ion()  # enable interactive mode
 
@@ -583,9 +583,7 @@ mean_return_without_PE[mean_return_without_PE == 0] = None
 mean_return_with_PE_obs[mean_return_with_PE_obs == 0] = None
 mean_return_with_PE_latent[mean_return_with_PE_latent == 0] = None
 
-
 fig, ax = plt.subplots(figsize=(16, 9))
-
 
 ax.scatter(np.arange(len(mean_return_without_PE)), mean_return_without_PE, label = 'without_PE')
 ax.scatter(np.arange(len(mean_return_with_PE_obs)), mean_return_with_PE_obs, label = 'with_PE_obs')

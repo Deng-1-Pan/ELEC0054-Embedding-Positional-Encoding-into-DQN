@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 KEY_WORD = 'MiniGrid'   # check if the env is Minigrid
-OUTPUT_DIM = 3
+OUTPUT_DIM = 7
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -89,8 +89,8 @@ class QNetwork(nn.Module):
     def forward(self, timestep, state, PE_switch):
         """Builds the convolutional network"""
         
-        if not self.CONV_SWITCH:
-            state = state.view(state.size(0), -1)
+        # if not self.CONV_SWITCH:
+        #     state = state.view(state.size(0), -1)
         
         if KEY_WORD in self.env_name:
             if PE_switch and self.PE_pos == 'obs':
