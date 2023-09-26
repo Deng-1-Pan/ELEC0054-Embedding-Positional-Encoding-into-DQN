@@ -1,0 +1,17 @@
+name: myconda
+channels:
+  - defaults
+dependencies:
+  - pip=23.0.1
+  - python=3.9.16
+  - pip:
+      - gymnasium==0.29.0
+      - matplotlib==3.7.1
+      - matplotlib-inline==0.1.6
+      - minigrid==2.3.0
+      - numpy==1.24.2
+      - pandas==2.0.0
+      - scikit-learn==1.2.2
+      - sklearn==0.0.post4
+      - torch==2.0.0
+      - torchvision==0.15.1
