@@ -10,3 +10,10 @@ Please see the environment.yml file
 
 ## Resutls
 
+For MiniGrid-Empty:
+
+![Empty](img/MiniGrid-Empty-6x6-v0_rolling_return.png)
+
+For MiniGrid-FourRooms:
+
+![FourRooms](img/MiniGrid-FourRooms-v0_rolling_return.png)
